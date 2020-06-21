@@ -115,7 +115,7 @@ addThreadWidget model cat = div [class' "s11k-add-thread row form-group"] [
 
 
 threadSummary :: MonadJSM m => (Zettel, InitialV) -> Thread -> HtmlM m (Zettel, InitialV)
-threadSummary _ t = div [ class' "s11k-thread-summary col-sm-4 col-md-3 col-lg-2"
+threadSummary _ t = div [ class' "s11k-thread-summary col-sm-4 col-md-3 col-lg-2 mb-2"
                         , onClickM_ $ navigate @SPA (ThreadRoute (threadId t)) ]
                         [ text (threadTitle t) ]
 
