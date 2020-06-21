@@ -230,7 +230,7 @@ instance ToHttpApiData a => ToHttpApiData [a] where
 
 instance FromHttpApiData a => FromHttpApiData [a] where
   parseUrlPiece t = either (const (Right [])) Right . sequence
-                    $ parseUrlPiece <$> split (== ',') t
+                    $ parseUrlPiece <$> filter (/= "") (split (== ',') t)
 
 
 instance FromHttpApiData ThreadId where
