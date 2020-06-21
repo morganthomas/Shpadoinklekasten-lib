@@ -66,20 +66,20 @@ threadView model@(z, v) =
   let t = viewedThread v
   in div [class' "s11k-view-thread"] $ [
     backToInitial,
-    div [class' "s11k-thread-title"] [ text (threadTitle t) ],
-    div [class' "s11k-categories row"] ( text "Categories: "
-           : ( div [class' "s11k-category col"] . (:[]) . text
-               <$> catMaybes (categoryIdTitle z <$> categorization t) ) ),
-    div [class' "s11k-links row"] ( text "Links: " :  (linkView <$> links t) ),
+    h2 [class' "s11k-thread-title"] [ text (threadTitle t) ],
+    div [class' "s11k-categories row"]
+    ( div [class' "s11k-category col"] . (:[]) . text
+      <$> catMaybes (categoryIdTitle z <$> categorization t) ),
+    div [class' "s11k-links row"] (linkView <$> links t),
     addCommentWidget model,
-    div [class' "s11k-comments"] ( text "Comments: " :  (commentView <$> comments t) ) ]
+    div [class' "s11k-comments"] (commentView <$> comments t) ]
 
 
 -- initialView pieces
 
 
 reloadWidget :: Monad m => ZettelEditor m => HtmlM m (Zettel, InitialV)
-reloadWidget = div [ class' "s11k-reload", onClickE reload ] [ "Reload" ]
+reloadWidget = div [ class' "s11k-reload btn btn-link", onClickE reload ] [ "Reload" ]
 
 
 addCategoryWidget :: MonadUnliftIO m => ZettelEditor m
@@ -124,7 +124,8 @@ threadSummary _ t = div [ class' "s11k-thread-summary col"
 
 
 backToInitial :: MonadJSM m => HtmlM m (Zettel, ThreadV)
-backToInitial = div [ class' "s11k-back btn btn-link", onClickM_ (navigate @SPA InitialRoute) ] [ text "Back" ]
+backToInitial = div [ class' "s11k-back btn btn-link"
+                    , onClickM_ (navigate @SPA InitialRoute) ] [ text "Back" ]
 
 
 addCommentWidget :: MonadUnliftIO m => ZettelEditor m
@@ -135,8 +136,10 @@ addCommentWidget model@(_,v) = div [class' "s11k-add-comment form-group"] [
   button [ class' "form-control btn btn-primary", onClickE addComment ] [ text "Add Comment" ] ]
 
 
-linkView :: Monad m => Link -> HtmlM m (Zettel, ThreadV)
-linkView l = div [class' "col s11k-link"] [ text (linkDescription l) ]
+linkView :: MonadJSM m => Link -> HtmlM m (Zettel, ThreadV)
+linkView l = div [class' "col s11k-link"]
+             [ a [class' "btn btn-link", onClickM_ $ navigate @SPA (ThreadRoute (linkTo l))]
+               [text (linkDescription l)] ]
 
 
 commentView :: Monad m => Text -> HtmlM m (Zettel, ThreadV)
