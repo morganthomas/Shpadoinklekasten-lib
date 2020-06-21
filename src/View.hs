@@ -66,10 +66,10 @@ threadView model@(z, v) =
   let t = viewedThread v
   in div [class' "s11k-view-thread"] $ [
     backToInitial,
-    h2 [class' "s11k-thread-title"] [ text (threadTitle t) ],
     div [class' "s11k-categories row"]
-    ( div [class' "s11k-category col"] . (:[]) . text
+    ( h2 [class' "s11k-category col"] . (:[]) . text
       <$> catMaybes (categoryIdTitle z <$> categorization t) ),
+    h3 [class' "s11k-thread-title"] [ text (threadTitle t) ],
     div [class' "s11k-links row"] (linkView <$> links t),
     addCommentWidget model,
     div [class' "s11k-comments"] (commentView <$> comments t) ]
@@ -93,14 +93,14 @@ addCategoryWidget model@(_,i) = div [class' "s11k-add-category form-group row"] 
 
 categoryList :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
              => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
-categoryList model = div [class' "s11k-category-list"]
+categoryList model = div [class' "s11k-category-list mb-3"]
                      $ categorySummary model <$> M.elems (categories (fst model))
 
 
 categorySummary :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
                 => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
 categorySummary model cat = div [class' "s11k-category-summary"] [
-  div [class' "s11k-category-title"] [ text (categoryTitle cat) ],
+  h2 [class' "s11k-category-title"] [ text (categoryTitle cat) ],
   addThreadWidget model cat,
   div [class' "s11k-thread-summaries row"] (threadSummary model <$> categoryThreads (fst model) cat) ]
 
