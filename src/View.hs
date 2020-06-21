@@ -84,11 +84,11 @@ reloadWidget = div [ class' "s11k-reload", onClickE reload ] [ "Reload" ]
 
 addCategoryWidget :: MonadUnliftIO m => ZettelEditor m
                   => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
-addCategoryWidget model@(_,i) = div [class' "s11k-add-category"] [
-  input [ ("type", "text"), onSubmitE addCategory
+addCategoryWidget model@(_,i) = div [class' "s11k-add-category form-group row"] [
+  input [ class' "form-control col-sm-9", ("type", "text"), onSubmitE addCategory
         , onInput (setNewCategoryTitle model)
         , ("value", textProp (newCategoryTitle i)) ] [],
-  button [ class' "button btn-primary", onClickE addCategory ] [ text "New Category" ] ]
+  button [ class' "form-control col button btn-primary", onClickE addCategory ] [ text "New Category" ] ]
 
 
 categoryList :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
@@ -108,10 +108,10 @@ categorySummary model cat = div [class' "s11k-category-summary"] [
 addThreadWidget :: MonadUnliftIO m => ZettelEditor m
                 => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
 addThreadWidget model cat = div [class' "s11k-add-thread form-group"] [
-  input [ class' "form-control", ("type", "text"), onSubmitE (addThread cat)
+  input [ class' "form-control col-sm-9", ("type", "text"), onSubmitE (addThread cat)
         , onInput (setNewThreadTitle model cat)
         , ("value", textProp (getNewThreadTitle model cat)) ] [],
-  button [ class' "form-control button btn-primary", onClickE (addThread cat) ] [ text "New Thread" ] ]
+  button [ class' "form-control col button btn-primary", onClickE (addThread cat) ] [ text "New Thread" ] ]
 
 
 threadSummary :: MonadJSM m => (Zettel, InitialV) -> Thread -> HtmlM m (Zettel, InitialV)
@@ -130,7 +130,7 @@ backToInitial = div [ class' "s11k-back", onClickM_ (navigate @SPA InitialRoute)
 addCommentWidget :: MonadUnliftIO m => ZettelEditor m
                  => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
 addCommentWidget model@(_,v) = div [class' "s11k-add-comment form-group"] [
-  textarea' [ class' "form-control", ("rows", "7"), ("cols", "70"), onSubmitE addComment
+  textarea' [ class' "form-control", ("rows", "4"), ("cols", "70"), onSubmitE addComment
             , onInput (setNewComment model), ("value", textProp (newComment v)) ],
   button [ class' "form-control button btn-primary", onClickE addComment ] [ text "Add Comment" ] ]
 
