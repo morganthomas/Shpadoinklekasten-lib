@@ -20,6 +20,15 @@ import           Prelude hiding (div)
 import           Types
 
 
+template :: Monad m => Text -> HtmlM m a -> HtmlM m a
+template js v = html_
+  [ head_
+    [ link' [ rel "stylesheet", href "https://cdn.usebootstrap.com/bootstrap/4.3.1/css/bootstrap.min.css" ]
+    , meta [ charset "ISO-8859-1" ] []
+    , script [ type' "text/javascript" ] [ text js ] ]
+  , body_ [ v ] ]
+
+
 viewRouter :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
            => Route -> IO (HtmlM m Model)
 viewRouter r = let model = initialModel r (Zettel mempty mempty)
@@ -28,7 +37,14 @@ viewRouter r = let model = initialModel r (Zettel mempty mempty)
 
 view :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
      => Model -> HtmlM m Model
-view = pimap coproductIsoModel . viewCases . modelToCoproduct
+view = viewContainer . pimap coproductIsoModel . viewCases . modelToCoproduct
+
+
+viewContainer :: IsHtml h p => h a -> h a
+viewContainer v =
+  div [class' "container-fluid s11k-app"] [
+      h1_ [ "Shpadoinklekasten" ],
+      div [class' "view"] [ v ] ] ]
 
 
 viewCases :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
@@ -126,17 +142,3 @@ linkView l = div [class' "col s11k-link"] [ text (linkDescription l) ]
 commentView :: Monad m => Text -> HtmlM m (Zettel, ThreadV)
 commentView = div [class' "s11k-comment"] . (:[]) . text
 
-
--- template
-
-
-template :: Monad m => Text -> HtmlM m a -> HtmlM m a
-template js v = html_
-  [ head_
-    [ link' [ rel "stylesheet", href "https://cdn.usebootstrap.com/bootstrap/4.3.1/css/bootstrap.min.css" ]
-    , meta [ charset "ISO-8859-1" ] []
-    , script [ type' "text/javascript" ] [ text js ] ]
-  , body_ [
-      div [class' "container-fluid s11k-app"] [
-          h1_ [ "Shpadoinklekasten" ],
-          div [class' "view"] [ v ] ] ] ]
