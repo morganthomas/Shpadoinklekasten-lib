@@ -93,13 +93,13 @@ addCategoryWidget model@(_,i) = div [class' "s11k-add-category form-group row"] 
 
 categoryList :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
              => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
-categoryList model = div [class' "s11k-category-list mb-3"]
+categoryList model = div [class' "s11k-category-list"]
                      $ categorySummary model <$> M.elems (categories (fst model))
 
 
 categorySummary :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
                 => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
-categorySummary model cat = div [class' "s11k-category-summary"] [
+categorySummary model cat = div [class' "s11k-category-summary mb-3"] [
   h2 [class' "s11k-category-title"] [ text (categoryTitle cat) ],
   addThreadWidget model cat,
   div [class' "s11k-thread-summaries row"] (threadSummary model <$> categoryThreads (fst model) cat) ]
