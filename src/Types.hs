@@ -79,9 +79,9 @@ class ZettelEditor m where
   getDatabase :: m Zettel
 
 
-type API =      "api" :> "category" :> Capture "id" CategoryId :> Capture "title" Text :> Post '[JSON] ()
-           :<|> "api" :> "thread"   :> Capture "id" ThreadId   :> Capture "title" Text :> Capture "links" [Link] :> Capture "categorization" [CategoryId] :> Post '[JSON] ()
-           :<|> "api" :> "comment"  :> Capture "id" ThreadId   :> Capture "text"  Text :> Post '[JSON] ()
+type API =      "api" :> "category" :> Capture "id" CategoryId :> QueryParam' '[Required] "title" Text :> Post '[JSON] ()
+           :<|> "api" :> "thread"   :> Capture "id" ThreadId   :> QueryParam' '[Required] "title" Text :> QueryParam' '[Required] "links" [Link] :> QueryParam' '[Required] "categorization" [CategoryId] :> Post '[JSON] ()
+           :<|> "api" :> "comment"  :> Capture "id" ThreadId   :> ReqBody' '[Required] '[JSON] Text :> Post '[JSON] ()
            :<|> "api" :> Get '[JSON] Zettel
 
 
