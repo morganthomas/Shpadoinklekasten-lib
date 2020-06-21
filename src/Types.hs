@@ -229,7 +229,8 @@ instance ToHttpApiData a => ToHttpApiData [a] where
 
 
 instance FromHttpApiData a => FromHttpApiData [a] where
-  parseUrlPiece t = sequence $ parseUrlPiece <$> split (== ',') t
+  parseUrlPiece t = either (const (Right [])) Right . fmap concat . sequence
+                    $ parseUrlPiece <$> split (== ',') t
 
 
 instance FromHttpApiData ThreadId where
