@@ -115,7 +115,7 @@ addThreadWidget model cat = div [class' "s11k-add-thread row form-group"] [
 
 
 threadSummary :: MonadJSM m => (Zettel, InitialV) -> Thread -> HtmlM m (Zettel, InitialV)
-threadSummary _ t = div [ class' "s11k-thread-summary col"
+threadSummary _ t = div [ class' "s11k-thread-summary col-sm-4 col-md-3 col-lg-2"
                         , onClickM_ $ navigate @SPA (ThreadRoute (threadId t)) ]
                         [ text (threadTitle t) ]
 
@@ -143,4 +143,4 @@ linkView l = div [class' "col s11k-link"]
 
 
 commentView :: Monad m => Text -> HtmlM m (Zettel, ThreadV)
-commentView = div [class' "s11k-comment"] . (:[]) . text
+commentView = div [class' "s11k-comment mb-2"] . (:[]) . text
