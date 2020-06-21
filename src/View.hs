@@ -40,11 +40,11 @@ view :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
 view = viewContainer . pimap coproductIsoModel . viewCases . modelToCoproduct
 
 
-viewContainer :: IsHtml h p => h a -> h a
+viewContainer :: Monad m =>  HtmlM m a -> HtmlM m a
 viewContainer v =
   div [class' "container-fluid s11k-app"] [
       h1_ [ "Shpadoinklekasten" ],
-      div [class' "view"] [ v ] ] ]
+      div [class' "view"] [ v ] ]
 
 
 viewCases :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
@@ -141,4 +141,3 @@ linkView l = div [class' "col s11k-link"] [ text (linkDescription l) ]
 
 commentView :: Monad m => Text -> HtmlM m (Zettel, ThreadV)
 commentView = div [class' "s11k-comment"] . (:[]) . text
-
