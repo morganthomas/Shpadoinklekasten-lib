@@ -45,7 +45,7 @@ viewContainer :: Monad m => Model -> HtmlM m a -> HtmlM m a
 viewContainer model v =
   div [class' "container-fluid s11k-app"] [
       h1_ [ "Shpadoinklekasten" ],
-      div [class' "pull-right"] [ text $ maybe "Not logged in" (("Logged in as " <>) . unUserId) (whoAmI (fst model)) ],
+      div [("style", "text-align: right")] [ text $ maybe "Not logged in" (("Logged in as " <>) . unUserId) (whoAmI (fst model)) ],
       div [class' "view"] [ v ] ]
 
 

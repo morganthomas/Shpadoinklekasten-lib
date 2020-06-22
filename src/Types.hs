@@ -22,9 +22,8 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Class
 import           Control.PseudoInverseCategory (EndoIso, piiso)
 import           Control.ShpadoinkleContinuation
-import           Crypto.Hash.SHA256 (hash)
 import           Data.Aeson
-import           Data.ByteString (ByteString)
+import           Data.ByteString.Lazy (fromStrict)
 import qualified Data.Map as M
 import           Data.Maybe (catMaybes, fromMaybe)
 import           Data.Proxy
@@ -33,7 +32,7 @@ import           Data.Text.Encoding (encodeUtf8)
 import           Data.Time.Calendar
 import qualified Data.UUID as U
 import           GHC.Generics
-import           Language.Javascript.JSaddle (MonadJSM (..), JSM, JSVal, liftJSM, askJSM, runJSaddle, valToNumber, eval, (#), makeObject, toJSString)
+import           Language.Javascript.JSaddle (MonadJSM (..), JSM, JSVal, liftJSM, askJSM, runJSaddle, valToNumber, valToText, eval, (#), makeObject, toJSString, jsg1, val)
 import           Servant.API hiding (Link)
 import           Shpadoinkle.Backend.ParDiff
 import           Shpadoinkle.Html.LocalStorage
@@ -57,6 +56,10 @@ newtype UserId = UserId { unUserId :: Text }
 
 
 newtype SessionId = SessionId { unSessionId :: Text }
+  deriving (Eq, Read, Show)
+
+
+newtype PasswordHash = PasswordHash { unPasswordHash :: Text }
   deriving (Eq, Read, Show)
 
 
@@ -117,7 +120,7 @@ class ZettelEditor m where
   saveNewThread :: ThreadId -> Text -> [Link] -> [CategoryId] -> SessionId -> m ()
   saveNewComment :: ThreadId -> Text -> SessionId -> m ()
   getDatabase :: SessionId -> m Zettel
-  login :: UserId -> ByteString -> m (Maybe Session)
+  login :: UserId -> PasswordHash -> m (Maybe Session)
 
 
 type API =      "api" :> "category" :> Capture "id" CategoryId :> QueryParam' '[Required] "title" Text
@@ -128,7 +131,7 @@ type API =      "api" :> "category" :> Capture "id" CategoryId :> QueryParam' '[
            :<|> "api" :> "comment"  :> Capture "id" ThreadId  :> ReqBody' '[Required] '[JSON] Text
                 :> QueryParam' '[Required] "session" SessionId :> Post '[JSON] ()
            :<|> "api" :> QueryParam' '[Required] "session" SessionId :> Get '[JSON] Zettel
-           :<|> "api" :> "login" :> Capture "id" UserId :> ReqBody' '[Required] '[OctetStream] ByteString {- password hash -}
+           :<|> "api" :> "login" :> Capture "id" UserId :> ReqBody' '[Required] '[OctetStream] PasswordHash
                  :> Post '[JSON] (Maybe Session)
 
 
@@ -233,9 +236,14 @@ setPassword :: (Zettel, LoginV) -> Text -> (Zettel, LoginV)
 setPassword (z, LoginV u _) p = (z, LoginV u p)
 
 
+hash :: Text -> JSM PasswordHash
+hash t = PasswordHash <$> (jsg1 ("sha256" :: Text) (val t) >>= valToText)
+
+
 handleLogin :: MonadJSM m => ZettelEditor m => Continuation m (Zettel, LoginV)
 handleLogin = Continuation . (id,) $ \(z, LoginV u p) -> do
-  res <- login (UserId u) (hash (encodeUtf8 p))
+  h   <- liftJSM (hash p)
+  res <- login (UserId u) h
   case res of
     Just s -> 
       return . Continuation . ((\(z',v) -> (z' { session = Just s }, v)),)
@@ -405,6 +413,18 @@ instance FromHttpApiData SessionId where
 
 instance ToHttpApiData SessionId where
   toUrlPiece = unSessionId
+
+
+instance FromHttpApiData PasswordHash where
+  parseUrlPiece = return . PasswordHash
+
+
+instance ToHttpApiData PasswordHash where
+  toUrlPiece = unPasswordHash
+
+
+instance MimeRender OctetStream PasswordHash where
+  mimeRender _ = fromStrict . encodeUtf8 . unPasswordHash
 
 
 instance FromHttpApiData Link where
