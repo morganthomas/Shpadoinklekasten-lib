@@ -23,12 +23,12 @@ import           Control.Monad.Trans.Class
 import           Control.PseudoInverseCategory (EndoIso, piiso)
 import           Control.ShpadoinkleContinuation
 import           Data.Aeson
-import           Data.ByteString.Lazy (fromStrict)
+import           Data.ByteString.Lazy (fromStrict, toStrict)
 import qualified Data.Map as M
 import           Data.Maybe (catMaybes, fromMaybe)
 import           Data.Proxy
 import           Data.Text (Text, intercalate, split)
-import           Data.Text.Encoding (encodeUtf8)
+import           Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import           Data.Time.Calendar
 import qualified Data.UUID as U
 import           GHC.Generics
@@ -415,16 +415,12 @@ instance ToHttpApiData SessionId where
   toUrlPiece = unSessionId
 
 
-instance FromHttpApiData PasswordHash where
-  parseUrlPiece = return . PasswordHash
-
-
-instance ToHttpApiData PasswordHash where
-  toUrlPiece = unPasswordHash
-
-
 instance MimeRender OctetStream PasswordHash where
   mimeRender _ = fromStrict . encodeUtf8 . unPasswordHash
+
+
+instance MimeUnrender OctetStream PasswordHash where
+  mimeUnrender _ = Right . PasswordHash . decodeUtf8 . toStrict
 
 
 instance FromHttpApiData Link where
