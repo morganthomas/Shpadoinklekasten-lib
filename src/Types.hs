@@ -57,7 +57,7 @@ newtype UserId = UserId { unUserId :: Text }
 
 
 newtype SessionId = SessionId { unSessionId :: Text }
-  deriving (Eq, Show)
+  deriving (Eq, Read, Show)
 
 
 data Link = Link { linkTo :: ThreadId, linkDescription :: Text }
