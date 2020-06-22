@@ -165,4 +165,4 @@ commentView c = div [class' "s11k-comment mb-2"] [
 
 -- Shared pieces
 dateView :: Day -> Text
-dateView = pack . showGregorian
+dateView = pack . (\(y, m, d) -> show y <> "-" <> show m <> "-" <> show d) . toGregorian
