@@ -540,7 +540,11 @@ instance FromJSON Zettel where
 
 
 instance ToJSON Zettel where
-  toJSON z = object [ "categories" .= M.elems (categories z), "threads" .= M.elems (threads z) ]
+  toJSON z = object
+             [ "categories" .= M.elems (categories z)
+             , "threads" .= M.elems (threads z)
+             , "users" .= M.elems (users z)
+             , "session" .= session z ]
 
 
 instance (Monad m, ZettelEditor m) => ZettelEditor (ParDiffT model m) where
