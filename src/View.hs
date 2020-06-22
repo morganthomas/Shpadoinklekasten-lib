@@ -11,6 +11,7 @@ import           Control.ShpadoinkleContinuation (runContinuation)
 import qualified Data.Map as M
 import           Data.Maybe (catMaybes)
 import           Data.Text
+import           Data.Time.Calendar
 import           Shpadoinkle
 import           Shpadoinkle.Html
 import           Shpadoinkle.Router
@@ -31,25 +32,26 @@ template js v = html_
 
 viewRouter :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
            => Route -> IO (HtmlM m Model)
-viewRouter r = let model = initialModel r (Zettel mempty mempty)
+viewRouter r = let model = initialModel r emptyZettel
   in view . ($ model) <$> runContinuation (router r) model
 
 
 view :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
      => Model -> HtmlM m Model
-view = viewContainer . pimap coproductIsoModel . viewCases . modelToCoproduct
+view model = viewContainer model . pimap coproductIsoModel . viewCases $ modelToCoproduct model
 
 
-viewContainer :: Monad m =>  HtmlM m a -> HtmlM m a
-viewContainer v =
+viewContainer :: Monad m => Model -> HtmlM m a -> HtmlM m a
+viewContainer model v =
   div [class' "container-fluid s11k-app"] [
       h1_ [ "Shpadoinklekasten" ],
+      div [class' "pull-right"] [ text $ maybe "Not logged in" (("Logged in as " <>) . unUserId) (whoAmI (fst model)) ],
       div [class' "view"] [ v ] ]
 
 
 viewCases :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
           => ModelCoproduct -> HtmlM m ModelCoproduct
-viewCases = initialView `eitherH` threadView
+viewCases = initialView `eitherH` threadView `eitherH` loginView
 
 
 initialView :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
@@ -70,9 +72,20 @@ threadView model@(z, v) =
     ( h2 [class' "s11k-category col"] . (:[]) . text
       <$> catMaybes (categoryIdTitle z <$> categorization t) ),
     h3 [class' "s11k-thread-title"] [ text (threadTitle t) ],
+    div [class' "s11k-thread-author"] [ text (unUserId (threadAuthor t)) ],
+    div [class' "s11k-thread-created"] [ text (dateView (threadCreated t)) ],
     div [class' "s11k-links row"] (linkView <$> links t),
     addCommentWidget model,
     div [class' "s11k-comments"] (commentView <$> comments t) ]
+
+
+loginView :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
+          => (Zettel, LoginV) -> HtmlM m (Zettel, LoginV)
+loginView model@(z,l) =
+  div [class' "s11k-login form-group"] [
+    input' [ class' "form-control", type' "text", placeholder "User ID", onInput (setUserId model) ],
+    input' [ class' "form-control", type' "password", placeholder "Password", onInput (setPassword model) ],
+    button [ class' "btn btn-primary", onClickE handleLogin ] [ text "Login" ] ]
 
 
 -- initialView pieces
@@ -82,7 +95,7 @@ reloadWidget :: Monad m => ZettelEditor m => HtmlM m (Zettel, InitialV)
 reloadWidget = div [ class' "s11k-reload btn btn-link", onClickE reload ] [ "Reload" ]
 
 
-addCategoryWidget :: MonadUnliftIO m => ZettelEditor m
+addCategoryWidget :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
                   => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
 addCategoryWidget model@(_,i) = div [class' "s11k-add-category form-group row"] [
   input [ class' "form-control col-sm-9", ("type", "text"), onSubmitE addCategory
@@ -105,7 +118,7 @@ categorySummary model cat = div [class' "s11k-category-summary mb-3"] [
   div [class' "s11k-thread-summaries row"] (threadSummary model <$> categoryThreads (fst model) cat) ]
 
 
-addThreadWidget :: MonadUnliftIO m => ZettelEditor m
+addThreadWidget :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
                 => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
 addThreadWidget model cat = div [class' "s11k-add-thread row form-group"] [
   input [ class' "form-control col-sm-9", ("type", "text"), onSubmitE (addThread cat)
@@ -128,7 +141,7 @@ backToInitial = div [ class' "s11k-back btn btn-link"
                     , onClickM_ (navigate @SPA InitialRoute) ] [ text "Back" ]
 
 
-addCommentWidget :: MonadUnliftIO m => ZettelEditor m
+addCommentWidget :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
                  => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
 addCommentWidget model@(_,v) = div [class' "s11k-add-comment form-group"] [
   textarea' [ class' "form-control", ("rows", "4"), ("cols", "70"), onSubmitE addComment
@@ -142,5 +155,14 @@ linkView l = div [class' "col s11k-link"]
                [text (linkDescription l)] ]
 
 
-commentView :: Monad m => Text -> HtmlM m (Zettel, ThreadV)
-commentView = div [class' "s11k-comment mb-2"] . (:[]) . text
+commentView :: Monad m => Comment -> HtmlM m (Zettel, ThreadV)
+commentView c = div [class' "s11k-comment mb-2"] [
+  div [class' "s11k-comment-text mb-1"] [ text (commentText c) ],
+  div [class' "s11k-comment-metadata"]
+    [ strong [] . (:[]) . text $ "- " <> unUserId (commentAuthor c)
+      <> ", " <> dateView (commentCreated c) ] ]
+
+
+-- Shared pieces
+dateView :: Day -> Text
+dateView = pack . showGregorian
