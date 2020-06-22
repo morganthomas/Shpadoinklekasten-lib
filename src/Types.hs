@@ -98,7 +98,7 @@ data UserProfile = UserProfile
 
 data Session = Session
   { sessionId      :: SessionId
-  , sessionUser    :: UserProfile
+  , sessionUser    :: UserId
   , sessionCreated :: Day }
   deriving (Eq, Show)
 
@@ -201,7 +201,7 @@ emptyZettel = Zettel mempty mempty mempty Nothing
 
 
 whoAmI :: Zettel -> Maybe UserId
-whoAmI = fmap (userId . sessionUser) . session
+whoAmI = fmap sessionUser . session
 
 
 categoryThreads :: Zettel -> Category -> [Thread]
