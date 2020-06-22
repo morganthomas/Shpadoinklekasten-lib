@@ -45,8 +45,8 @@ viewContainer :: Monad m => Model -> HtmlM m a -> HtmlM m a
 viewContainer model v =
   div [class' "container-fluid s11k-app"] [
       h1_ [ "Shpadoinklekasten" ],
-      div [("style", "text-align: right")] [ text $ maybe "Not logged in" (("Logged in as " <>) . unUserId) (whoAmI (fst model)) ],
-      div [class' "view"] [ v ] ]
+      div [class' "s11k-login-status"] [ text $ maybe "Not logged in" (("Logged in as " <>) . unUserId) (whoAmI (fst model)) ],
+      div [class' "s11k-view"] [ v ] ]
 
 
 viewCases :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
