@@ -36,6 +36,7 @@ import           GHC.Generics
 import           Language.Javascript.JSaddle (MonadJSM (..), JSM, JSVal, liftJSM, askJSM, runJSaddle, valToNumber, eval, (#), makeObject, toJSString)
 import           Servant.API hiding (Link)
 import           Shpadoinkle.Backend.ParDiff
+import           Shpadoinkle.Html.LocalStorage
 import           Shpadoinkle.Router
 import           Shpadoinkle.Router.Client (client, runXHR)
 import           System.Random (randomIO)
@@ -238,8 +239,9 @@ handleLogin = Continuation . (id,) $ \(z, LoginV u p) -> do
   case res of
     Just s -> 
       return . Continuation . ((\(z',v) -> (z' { session = Just s }, v)),)
-        . const . return . causes
-        $ navigate @SPA InitialRoute
+        . const . return . causes $ do
+          setStorage "session" (sessionId s)
+          navigate @SPA InitialRoute
     Nothing -> return (pur id)
 
 
