@@ -15,7 +15,7 @@
 module Types where
 
 
-import           Control.Arrow (second)
+import           Control.Arrow (first, second)
 import           Control.Monad (void)
 import           Control.Monad.Catch (MonadThrow (..))
 import           Control.Monad.IO.Class
@@ -243,14 +243,17 @@ hash t = PasswordHash <$> (jsg1 ("sha256" :: Text) (val t) >>= valToText)
 handleLogin :: MonadJSM m => ZettelEditor m => Continuation m (Zettel, LoginV)
 handleLogin = Continuation . (id,) $ \(z, LoginV u p) -> do
   h   <- liftJSM (hash p)
-  res <- login (UserId u) h
-  case res of
-    Just s -> 
-      return . Continuation . ((\(z',v) -> (z' { session = Just s }, v)),)
-        . const . return . causes $ do
-          setStorage "session" (sessionId s)
-          navigate @SPA InitialRoute
-    Nothing -> return (pur id)
+  return . Continuation . (second (const (LoginV "" "")),) $ \_ -> do
+    res <- login (UserId u) h
+    case res of
+      Just s ->
+        return . Continuation . (first (\z' -> z' { session = Just s }),)
+        $ \(z',v) -> do setStorage "session" (sessionId s)
+                        navigate @SPA InitialRoute
+                        z'' <- getDatabase (sessionId s)
+                        return . Continuation . (first (const z''),)
+                          . const . return . causes $ navigate @SPA InitialRoute
+      Nothing -> return (pur id)
 
 
 reload :: Monad m => ZettelEditor m => Continuation m (Zettel, InitialV)
