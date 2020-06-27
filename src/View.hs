@@ -74,9 +74,9 @@ threadView model@(z, v) =
     h3 [class' "s11k-thread-title"] [ text (threadTitle t) ],
     div [class' "s11k-thread-author"] [ text (unUserId (threadAuthor t)) ],
     div [class' "s11k-thread-created"] [ text (dateView (threadCreated t)) ],
-    div [class' "s11k-links row"] (linkView <$> links t),
+    --div [class' "s11k-links row"] (linkView <$> links t),
     addCommentWidget model,
-    div [class' "s11k-comments"] (commentView <$> comments t) ]
+    div [class' "s11k-comments"] (commentView <$> threadComments z t) ]
 
 
 loginView :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
@@ -149,10 +149,10 @@ addCommentWidget model@(_,v) = div [class' "s11k-add-comment form-group"] [
   button [ class' "form-control btn btn-primary", onClickE addComment ] [ text "Add Comment" ] ]
 
 
-linkView :: MonadJSM m => Link -> HtmlM m (Zettel, ThreadV)
+{-linkView :: MonadJSM m => Link -> HtmlM m (Zettel, ThreadV)
 linkView l = div [class' "col s11k-link"]
              [ a [class' "btn btn-link", onClickM_ $ navigate @SPA (ThreadRoute (linkTo l))]
-               [text (linkDescription l)] ]
+               [text (linkDescription l)] ]-}
 
 
 commentView :: Monad m => Comment -> HtmlM m (Zettel, ThreadV)

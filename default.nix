@@ -53,6 +53,7 @@ let
     aeson = hsuper.aeson;
     containers = hsuper.containers;
     exceptions = hsuper.exceptions;
+    extra = hsuper.extra;
     jsaddle = hsuper.jsaddle;
     Shpadoinkle-continuations = hsuper.Shpadoinkle-continuations;
     transformers = hsuper.transformers;
