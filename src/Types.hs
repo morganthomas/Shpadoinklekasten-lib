@@ -22,7 +22,7 @@ module Types where
 
 import           Control.Applicative ((<|>))
 import           Control.Arrow (first, second)
-import           Control.Monad (void)
+import           Control.Monad (void, guard)
 import           Control.Monad.Catch (MonadThrow (..))
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Class
@@ -390,6 +390,29 @@ invertChange _ (NewRelationLabel l) = DeleteRelationLabel l
 invertChange _ (DeleteRelationLabel l) = NewRelationLabel l
 invertChange _ (NewRelation r) = DeleteRelation r
 invertChange z (ComposedChanges cs) = ComposedChanges $ invertChange z <$> reverse cs
+
+
+applyChange :: UserId -> Day -> Change -> Zettel -> Zettel
+applyChange _ _ (NewCategory i t) z = z { categories = M.insert i (Category t i [] Nothing) (categories z) }
+applyChange u d (NewThread i t) z = z { threads = M.insert i (Thread i t u d [] [] Nothing) (threads z) }
+applyChange u d (NewComment it ic t) z = fromMaybe z $ do
+  th <- M.lookup it (threads z)
+  return $ z { comments = M.insert ic (Comment ic u d [Edit d t]) (comments z)
+             , threads = M.insert it th { threadCommentIds = threadCommentIds th ++ [ic] } (threads z) }
+applyChange u d (NewEdit i t) z = fromMaybe z $ do
+  c <- M.lookup i (comments z)
+  guard (u == commentAuthor c)
+  return $ z { comments = M.insert i (c { commentEdits = (Edit d t) : commentEdits c }) (comments z) }
+applyChange _ _ (AddThreadToCategory ic it) z = fromMaybe z $ do
+  c <- M.lookup ic (categories z)
+  t <- M.lookup it (threads z)
+  return $ z { categories = M.insert ic (c { categoryThreadIds = categoryThreadIds c ++ [it] }) (categories z)
+             , threads = M.insert it (t { categorization = categorization t ++ [ic] }) (threads z) }
+applyChange _ _ (RemoveThreadFromCategory ic it) z = fromMaybe z $ do
+  c <- M.lookup ic (categories z)
+  t <- M.lookup it (threads z)
+  return $ z { categories = M.insert ic (c { categoryThreadIds = filter (/= it) (categoryThreadIds c) }) (categories z)
+             , threads = M.insert it (t { categorization = filter (/= ic) (categorization t) }) (threads z) }
 
 
 initialViewModel :: Zettel -> InitialV
