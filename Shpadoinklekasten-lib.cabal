@@ -25,6 +25,7 @@ library
                      , exceptions
                      , extra
                      , jsaddle
+                     , next-uuid
                      , random ^>=1.1
                      , servant ^>=0.16
                      , text ^>=1.2.0.0

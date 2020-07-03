@@ -14,9 +14,15 @@ let
 
   # It's a shpadoinkle day
   shpadoinkle = builtins.fetchGit {
-    url    = https://gitlab.com/fresheyeball/Shpadoinkle.git;
-    rev    = "77a56850ab7897f28b107a729cff893e74dd15bd";
-    ref    = "master";
+    url = https://gitlab.com/fresheyeball/Shpadoinkle.git;
+    rev = "77a56850ab7897f28b107a729cff893e74dd15bd";
+    ref = "master";
+  };
+
+  next-uuid-src = builtins.fetchGit {
+    url = https://github.com/morganthomas/next-uuid.git;
+    rev = "ddcea7d70a01bf667c2ec3d82cef46e4b6852499";
+    ref = "master";
   };
 
 
@@ -55,6 +61,7 @@ let
     exceptions = hsuper.exceptions;
     extra = hsuper.extra;
     jsaddle = hsuper.jsaddle;
+    next-uuid = hsuper.callCabal2nix "next-uuid" next-uuid-src {};
     Shpadoinkle-continuations = hsuper.Shpadoinkle-continuations;
     transformers = hsuper.transformers;
     unliftio = hsuper.unliftio;

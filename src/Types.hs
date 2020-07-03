@@ -33,13 +33,14 @@ import           Data.ByteString.Lazy (fromStrict, toStrict)
 import           Data.Either.Extra (eitherToMaybe)
 import           Data.List (concatMap, uncons, findIndex, dropWhile, takeWhile)
 import qualified Data.Map as M
-import           Data.Maybe (catMaybes, fromMaybe, maybeToList)
+import           Data.Maybe (catMaybes, fromMaybe, maybeToList, isNothing)
 import           Data.Proxy
 import qualified Data.Set as S
-import           Data.Text (Text, intercalate, split)
+import           Data.Text (Text, intercalate, split, reverse)
 import           Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import           Data.Time.Calendar
 import qualified Data.UUID as U
+import           Data.UUID.Next (nextUUID)
 import           GHC.Generics
 import           Language.Javascript.JSaddle (MonadJSM (..), JSM, JSVal, liftJSM, askJSM, runJSaddle, valToNumber, valToText, eval, (#), makeObject, toJSString, jsg1, val)
 import           Servant.API hiding (Link)
@@ -52,15 +53,15 @@ import           UnliftIO
 import           UnliftIO.Concurrent (forkIO)
 
 
-newtype ThreadId = ThreadId { unThreadId :: Text }
+newtype ThreadId = ThreadId { unThreadId :: U.UUID }
   deriving (Eq, Ord, Show)
 
 
-newtype CategoryId = CategoryId { unCategoryId :: Text }
+newtype CategoryId = CategoryId { unCategoryId :: U.UUID }
   deriving (Eq, Ord, Show)
 
 
-newtype CommentId = CommentId { unCommentId :: Text }
+newtype CommentId = CommentId { unCommentId :: U.UUID }
   deriving (Eq, Ord, Show)
 
 
@@ -68,7 +69,7 @@ newtype UserId = UserId { unUserId :: Text }
   deriving (Eq, Ord, Show)
 
 
-newtype SessionId = SessionId { unSessionId :: Text }
+newtype SessionId = SessionId { unSessionId :: U.UUID }
   deriving (Eq, Read, Show)
 
 
@@ -92,13 +93,6 @@ data RelationLabel =
   deriving (Eq, Show)
 
 
-instance Ord RelationLabel where
-  compare (SymmL x) (SymmL y) = compare x y
-  compare (AsymL x) (AsymL y) = compare x y
-  compare (SymmL _) (AsymL _) = LT
-  compare (AsymL _) (SymmL _) = GT
-
-
 symmetricLabel :: Text -> RelationLabel
 symmetricLabel = SymmL . SymmL'
 
@@ -113,25 +107,12 @@ unRelationLabel _ g (AsymL (AsymL' a p)) = g a p
 
 
 data Relation' (s :: Symmetry) = Rel (RelationLabel' s) (ThreadId, ThreadId)
-deriving instance Eq (Relation' Symmetric)
-deriving instance Eq (Relation' Asymmetric)
-deriving instance Ord (Relation' Symmetric)
-deriving instance Ord (Relation' Asymmetric)
-deriving instance Show (Relation' Symmetric)
-deriving instance Show (Relation' Asymmetric)
 
 
 data Relation =
     Symm (Relation' Symmetric)
   | Asym (Relation' Asymmetric)
   deriving (Eq, Show)
-
-
-instance Ord Relation where
-  compare (Symm x) (Symm y) = compare x y
-  compare (Asym x) (Asym y) = compare x y
-  compare (Symm _) (Asym _) = LT
-  compare (Asym _) (Symm _) = GT
 
 
 data Edit = Edit
@@ -152,7 +133,8 @@ data Category = Category
   { categoryTitle :: Text
   , categoryId :: CategoryId
   , categoryThreadIds :: [ThreadId]
-  , categoryCreatedFrom :: Maybe CategoryId }
+  , categoryCreatedFrom :: Maybe CategoryId
+  , categoryIsTrash :: Bool }
   deriving (Eq, Show)
 
 
@@ -183,7 +165,7 @@ data Change = NewCategory CategoryId Text
             | RemoveThreadFromCategory CategoryId ThreadId
             | RetitleCategory CategoryId CategoryId Text
             | RetitleThread ThreadId ThreadId Text
-            | RemoveComment ThreadId CommentId
+            | RemoveComment ThreadId ThreadId CommentId
             | TrashCategory CategoryId
             | UntrashCategory CategoryId
             | SplitThread ThreadId ThreadId ThreadId CommentId
@@ -211,6 +193,7 @@ data Session = Session
 data Zettel = Zettel
   { categories :: M.Map CategoryId Category
   , threads :: M.Map ThreadId Thread
+  , trashcan :: S.Set ThreadId
   , comments :: M.Map CommentId Comment
   , relations :: S.Set Relation
   , users :: M.Map UserId UserProfile
@@ -309,7 +292,7 @@ coproductIsoModel = piiso coproductToModel modelToCoproduct
 
 
 emptyZettel :: Zettel
-emptyZettel = Zettel mempty mempty mempty mempty mempty Nothing
+emptyZettel = Zettel mempty mempty mempty mempty mempty mempty Nothing
 
 
 whoAmI :: Zettel -> Maybe UserId
@@ -342,9 +325,13 @@ commentLastEdited :: Comment -> Day
 commentLastEdited c = fromMaybe (fromGregorian 0 0 0) $ editCreated . fst <$> uncons (commentEdits c)
 
 
+nextThreadId :: ThreadId -> ThreadId
+nextThreadId (ThreadId i) = ThreadId (nextUUID i)
+
+
 invertChange :: Zettel -> Change -> Change
 invertChange _ (NewCategory c _) = TrashCategory c
-invertChange _ (NewComment t c _) = RemoveComment t c
+invertChange _ (NewComment t c _) = RemoveComment t (nextThreadId t) c
 invertChange z (NewEdit c x) = ComposedChanges . maybeToList
   $ NewEdit c . commentText <$> M.lookup c (comments z)
 invertChange z (AddThreadToCategory c t) = ComposedChanges $
@@ -361,23 +348,27 @@ invertChange z (RetitleCategory f t x) = ComposedChanges $
 invertChange z (RetitleThread f t x) = ComposedChanges $
   do thread <- maybeToList (M.lookup f (threads z))
      c <- categorization thread
-     [RemoveThreadFromCategory c t, AddThreadToCategory c f]
-invertChange z (RemoveComment t c) = ComposedChanges $
+     [ RemoveThreadFromCategory c t,
+       AddThreadToCategory c f ]
+invertChange z (RemoveComment f t c) = ComposedChanges $
   do comment <- maybeToList (M.lookup c (comments z))
-     thread <- maybeToList (M.lookup t (threads z))
+     thread <- maybeToList (M.lookup f (threads z))
      i <- maybeToList $ findIndex (== c) (threadCommentIds thread)
-     [AddCommentToThread t c, MoveComment t c i]
+     cat <- categorization thread
+     [ RemoveThreadFromCategory cat t,
+       AddThreadToCategory cat f ]
 invertChange _ (TrashCategory c) = UntrashCategory c
 invertChange _ (UntrashCategory c) = TrashCategory c
 invertChange z (SplitThread t f s c) = ComposedChanges $
   do thread <- maybeToList (M.lookup t (threads z))
      c <- categorization thread
      [RemoveThreadFromCategory c f, RemoveThreadFromCategory c s, AddThreadToCategory c t]
-invertChange _ (AddCommentToThread t c) = RemoveComment t c
-invertChange z (AddCommentRangeToThread f s e t) = ComposedChanges $
-  do thread <- maybeToList (M.lookup f (threads z))
-     c <- takeWhile (not . (== e)) . dropWhile (not . (== s)) $ threadCommentIds thread
-     [RemoveComment t c]
+invertChange _ (AddCommentToThread t c) = RemoveComment t (nextThreadId t) c
+invertChange z (AddCommentRangeToThread f s e t) =
+  let t' = nextThreadId t in ComposedChanges $
+    do thread <- maybeToList (M.lookup f (threads z))
+       c <- takeWhile (not . (== e)) . dropWhile (not . (== s)) $ threadCommentIds thread
+       [RemoveComment t t' c]
 invertChange z (MoveComment t c _) = ComposedChanges $
   do thread <- maybeToList (M.lookup t (threads z))
      i <- maybeToList . findIndex (== c) $ threadCommentIds thread
@@ -389,13 +380,18 @@ invertChange z (MoveThread c t _) = ComposedChanges $
 invertChange _ (NewRelationLabel l) = DeleteRelationLabel l
 invertChange _ (DeleteRelationLabel l) = NewRelationLabel l
 invertChange _ (NewRelation r) = DeleteRelation r
-invertChange z (ComposedChanges cs) = ComposedChanges $ invertChange z <$> reverse cs
+invertChange z (ComposedChanges cs) = ComposedChanges $ invertChange z <$> Prelude.reverse cs
 
 
 applyChange :: UserId -> Day -> Change -> Zettel -> Zettel
-applyChange _ _ (NewCategory i t) z = z { categories = M.insert i (Category t i [] Nothing) (categories z) }
-applyChange u d (NewThread i t) z = z { threads = M.insert i (Thread i t u d [] [] Nothing) (threads z) }
+applyChange _ _ (NewCategory i t) z = fromMaybe z $ do
+  guard . isNothing $ M.lookup i (categories z)
+  return $ z { categories = M.insert i (Category t i [] Nothing False) (categories z) }
+applyChange u d (NewThread i t) z = fromMaybe z $ do
+  guard . isNothing $ M.lookup i (threads z)
+  return $ z { threads = M.insert i (Thread i t u d [] [] Nothing) (threads z) }
 applyChange u d (NewComment it ic t) z = fromMaybe z $ do
+  guard . isNothing $ M.lookup ic (comments z)
   th <- M.lookup it (threads z)
   return $ z { comments = M.insert ic (Comment ic u d [Edit d t]) (comments z)
              , threads = M.insert it th { threadCommentIds = threadCommentIds th ++ [ic] } (threads z) }
@@ -407,12 +403,84 @@ applyChange _ _ (AddThreadToCategory ic it) z = fromMaybe z $ do
   c <- M.lookup ic (categories z)
   t <- M.lookup it (threads z)
   return $ z { categories = M.insert ic (c { categoryThreadIds = categoryThreadIds c ++ [it] }) (categories z)
-             , threads = M.insert it (t { categorization = categorization t ++ [ic] }) (threads z) }
+             , threads = M.insert it (t { categorization = categorization t ++ [ic] }) (threads z)
+             , trashcan = S.delete it (trashcan z) }
 applyChange _ _ (RemoveThreadFromCategory ic it) z = fromMaybe z $ do
   c <- M.lookup ic (categories z)
   t <- M.lookup it (threads z)
+  let cats' = filter (/= ic) (categorization t)
   return $ z { categories = M.insert ic (c { categoryThreadIds = filter (/= it) (categoryThreadIds c) }) (categories z)
-             , threads = M.insert it (t { categorization = filter (/= ic) (categorization t) }) (threads z) }
+             , threads = M.insert it (t { categorization = cats' }) (threads z)
+             , trashcan = if null cats' then S.insert it (trashcan z) else trashcan z }
+applyChange _ _ (RetitleCategory i i' t) z = fromMaybe z $ do
+  c <- M.lookup i (categories z)
+  guard . isNothing $ M.lookup i' (categories z)
+  return $ z { categories = M.insert i (c { categoryIsTrash = True }) $
+                            M.insert i' (c { categoryIsTrash = False
+                                           , categoryId = i'
+                                           , categoryTitle = t
+                                           , categoryCreatedFrom = Just i })
+                            (categories z) }
+applyChange _ _ (RetitleThread i i' t) z = fromMaybe z $ do
+  th <- M.lookup i (threads z)
+  guard . isNothing $ M.lookup i' (threads z)
+  return $ z { threads = M.insert i (th { categorization = [] }) $
+                         M.insert i' (th { threadId = i'
+                                         , threadTitle = t
+                                         , threadCreatedFrom = Just i })
+                         (threads z)
+             , trashcan = S.insert i (trashcan z)
+             , categories = replaceId <$> categories z }
+  where replaceId c = c { categoryThreadIds = (\j -> if j == i then i' else j)
+                                                <$> categoryThreadIds c }
+applyChange _ _ (RemoveComment it it' ic) z = fromMaybe z $ do
+  t <- M.lookup it (threads z)
+  guard . isNothing $ M.lookup it' (threads z)
+  return $ z { threads = M.insert it t { categorization = [] } $
+                         M.insert it' t { threadId = it'
+                                        , threadCommentIds = filter (/= ic) $ threadCommentIds t }
+                         (threads z)
+             , trashcan = S.insert it (trashcan z)
+             , categories = replaceId <$> categories z }
+  where replaceId c = c { categoryThreadIds = (\j -> if j == it then it' else j)
+                                                <$> categoryThreadIds c }
+applyChange _ _ (TrashCategory ic) z = fromMaybe z $ do
+  c <- M.lookup ic (categories z)
+  return $ z { categories = M.insert ic c { categoryIsTrash = True } (categories z) }
+applyChange _ _ (UntrashCategory ic) z = fromMaybe z $ do
+  c <- M.lookup ic (categories z)
+  return $ z { categories = M.insert ic c { categoryIsTrash = False } (categories z) }
+applyChange _ d (SplitThread it ia ib ic) z = fromMaybe z $ do
+  t <- M.lookup it (threads z)
+  c <- M.lookup ic (comments z)
+  (csa, csb) <- splitOn ic (threadCommentIds t)
+  return $ z { threads = M.insert it t { categorization = [] }
+                       . M.insert ia (Thread
+                                     { threadId = ia
+                                     , threadTitle = threadTitle t
+                                     , threadAuthor = threadAuthor t
+                                     , threadCreated = d
+                                     , threadCommentIds = csa
+                                     , categorization = categorization t
+                                     , threadCreatedFrom = Just it })
+                       $ M.insert ib (Thread
+                                     { threadId = ib
+                                     , threadTitle = commentText c
+                                     , threadAuthor = commentAuthor c
+                                     , threadCreated = d
+                                     , threadCommentIds = csb
+                                     , categorization = categorization t
+                                     , threadCreatedFrom = Just it })
+                         (threads z)
+             , trashcan = S.insert it (trashcan z)
+             , categories = replaceIds <$> categories z }
+  where replaceIds c = c { categoryThreadIds = interpolateAt it [ia, ib] (categoryThreadIds c) }
+
+        interpolateAt :: Eq a => a -> [a] -> [a] -> [a]
+        interpolateAt _ _  []     = []
+        interpolateAt x ys (z:zs)
+          | x == z    = ys ++ interpolateAt x ys zs
+          | otherwise = z : interpolateAt x ys zs
 
 
 initialViewModel :: Zettel -> InitialV
@@ -466,11 +534,11 @@ reload = Continuation . (id,) $ \(z,_) ->
 
 addCategory :: MonadUnliftIO m => ZettelEditor m => Continuation m (Zettel, InitialV)
 addCategory = Continuation . (id,) $ \(z,i) -> do
-  newId <- CategoryId . U.toText <$> liftIO randomIO
+  newId <- CategoryId <$> liftIO randomIO
   case session z of
     Just s -> do
       let f (z',i') =
-            let c = Category (newCategoryTitle i) newId [] Nothing
+            let c = Category (newCategoryTitle i) newId [] Nothing False
             in ( z' { categories = M.insert (categoryId c) c (categories z') }
                , i' { newCategoryTitle = ""
                     , newThreadTitles = M.insert (categoryId c) "" (newThreadTitles i') } )
@@ -486,7 +554,7 @@ addThread :: MonadJSM m => MonadUnliftIO m => ZettelEditor m => Category -> Cont
 addThread cat = Continuation . (id,) $ \(z,i) ->
   case (M.lookup (categoryId cat) (newThreadTitles i), session z, whoAmI z) of
     (Just t, Just s, Just u) -> do
-      newId <- ThreadId . U.toText <$> liftIO randomIO
+      newId <- ThreadId <$> liftIO randomIO
       today <- getToday
       let f model@(z',i') =
             let newThread = Thread newId t u today [] [categoryId cat] Nothing
@@ -514,7 +582,7 @@ getNewThreadTitle (_, i) cat = fromMaybe "" $ M.lookup (categoryId cat) (newThre
 addComment :: MonadJSM m => MonadUnliftIO m => ZettelEditor m => Continuation m (Zettel, ThreadV)
 addComment = Continuation . (id,) $ \(z, ThreadV t txt) -> do
   today <- getToday
-  cid   <- CommentId . U.toText <$> liftIO randomIO
+  cid   <- CommentId <$> liftIO randomIO
   case (session z, whoAmI z) of
     (Just s, Just u) ->
       let f (z', v) =
@@ -543,6 +611,40 @@ getToday = do
   return (fromGregorian year month day)
 
 
+splitOn :: Eq a => a -> [a] -> Maybe ([a], [a])
+splitOn x xs = do
+  (ys, zs) <- splitOn' x [] xs
+  return (Prelude.reverse ys, zs)
+  where
+    splitOn' :: Eq a => a -> [a] -> [a] -> Maybe ([a], [a])
+    splitOn' _ _  [] = Nothing
+    splitOn' x ys (z:zs)
+      | x == z    = Just (ys, zs)
+      | otherwise = splitOn' x (z:ys) zs
+
+
+instance Ord RelationLabel where
+  compare (SymmL x) (SymmL y) = compare x y
+  compare (AsymL x) (AsymL y) = compare x y
+  compare (SymmL _) (AsymL _) = LT
+  compare (AsymL _) (SymmL _) = GT
+
+
+instance Ord Relation where
+  compare (Symm x) (Symm y) = compare x y
+  compare (Asym x) (Asym y) = compare x y
+  compare (Symm _) (Asym _) = LT
+  compare (Asym _) (Symm _) = GT
+
+
+deriving instance Eq (Relation' Symmetric)
+deriving instance Eq (Relation' Asymmetric)
+deriving instance Ord (Relation' Symmetric)
+deriving instance Ord (Relation' Asymmetric)
+deriving instance Show (Relation' Symmetric)
+deriving instance Show (Relation' Asymmetric)
+
+
 instance ToHttpApiData a => ToHttpApiData [a] where
   toUrlPiece xs = intercalate "," $ toUrlPiece <$> xs
 
@@ -553,54 +655,54 @@ instance FromHttpApiData a => FromHttpApiData [a] where
 
 
 instance FromHttpApiData ThreadId where
-  parseUrlPiece = return . ThreadId
+  parseUrlPiece = maybe (Left "ThreadId: expected a UUID") (Right . ThreadId) . U.fromText
 
 
 instance ToHttpApiData ThreadId where
-  toUrlPiece = unThreadId
+  toUrlPiece = U.toText . unThreadId
 
 
 instance FromJSON ThreadId where
-  parseJSON (String s) = pure (ThreadId s)
-  parseJSON x = fail "ThreadId: Expected String"
+  parseJSON (String s) = maybe (fail "ThreadId: expected a UUID") (pure . ThreadId) (U.fromText s)
+  parseJSON x = fail "ThreadId: expected String"
 
 
 instance ToJSON ThreadId where
-  toJSON = String . unThreadId
+  toJSON = String . U.toText . unThreadId
 
 
 instance FromHttpApiData CategoryId where
-  parseUrlPiece = return . CategoryId
+  parseUrlPiece = maybe (Left "CategoryId: expected a UUID") (Right . CategoryId) . U.fromText
 
 
 instance ToHttpApiData CategoryId where
-  toUrlPiece = unCategoryId
+  toUrlPiece = U.toText . unCategoryId
 
 
 instance FromJSON CategoryId where
-  parseJSON (String s) = pure (CategoryId s)
-  parseJSON _ = fail "CategoryId: Expected String"
+  parseJSON (String s) = maybe (fail "CategoryId: expected a UUID") (pure . CategoryId) (U.fromText s)
+  parseJSON _ = fail "CategoryId: expected String"
 
 
 instance ToJSON CategoryId where
-  toJSON = String . unCategoryId
+  toJSON = String . U.toText . unCategoryId
 
 
 instance FromHttpApiData CommentId where
-  parseUrlPiece = return . CommentId
+  parseUrlPiece = maybe (Left "CommentId: expected a UUID") (Right . CommentId) . U.fromText
 
 
 instance ToHttpApiData CommentId where
-  toUrlPiece = unCommentId
+  toUrlPiece = U.toText . unCommentId
 
 
 instance FromJSON CommentId where
-  parseJSON (String s) = pure (CommentId s)
-  parseJSON _ = fail "CommentId: Expected String"
+  parseJSON (String s) = maybe (fail "CommentId: expected a UUID") (pure . CommentId) (U.fromText s)
+  parseJSON _ = fail "CommentId: expected String"
 
 
 instance ToJSON CommentId where
-  toJSON = String . unCommentId
+  toJSON = String . U.toText . unCommentId
 
 
 instance FromJSON UserId where
@@ -621,20 +723,20 @@ instance ToHttpApiData UserId where
 
 
 instance FromJSON SessionId where
-  parseJSON (String s) = pure (SessionId s)
-  parseJSON x = fail "SessionId: Expected String"
+  parseJSON (String s) = maybe (fail "SessionId: expected a UUID") (pure . SessionId) (U.fromText s)
+  parseJSON x = fail "SessionId: expected String"
 
 
 instance ToJSON SessionId where
-  toJSON = String . unSessionId
+  toJSON = String . U.toText . unSessionId
 
 
 instance FromHttpApiData SessionId where
-  parseUrlPiece = return . SessionId
+  parseUrlPiece = maybe (Left "SessionId: expected a UUID") (Right . SessionId) . U.fromText
 
 
 instance ToHttpApiData SessionId where
-  toUrlPiece = unSessionId
+  toUrlPiece = U.toText . unSessionId
 
 
 instance MimeRender OctetStream PasswordHash where
@@ -651,14 +753,16 @@ instance FromJSON Category where
     i  <- o .: "id"
     ts <- o .: "threads"
     f  <- o .: "from"
-    return (Category t i ts f)
+    h  <- o .: "isTrash"
+    return (Category t i ts f h)
 
 
 instance ToJSON Category where
   toJSON c = object [ "title" .= categoryTitle c
                     , "id" .= categoryId c
                     , "threads" .= categoryThreadIds c
-                    , "from" .= categoryCreatedFrom c ]
+                    , "from" .= categoryCreatedFrom c
+                    , "isTrash" .= categoryIsTrash c ]
 
 
 instance FromJSON Thread where
@@ -811,7 +915,9 @@ instance FromHttpApiData (RelationLabel' s) => FromHttpApiData (Relation' s) whe
   parseUrlPiece x = case split (== ':') x of
     (l:s:p:_) -> do
       label <- parseUrlPiece l
-      Right (Rel label (ThreadId s, ThreadId p))
+      s' <- parseUrlPiece s
+      p' <- parseUrlPiece p
+      Right (Rel label (s', p'))
     _         -> Left ("Parse fail: FromHttpApiData (RelationLabel' s): " <> x)
 
 
@@ -894,9 +1000,10 @@ instance FromJSON Change where
         return (RetitleThread f t r)
 
       parseRemoveComment o = do
-        t <- o .: "fromThreadId"
+        f <- o .: "fromThreadId"
+        t <- o .: "toThreadId"
         c <- o .: "removeCommentId"
-        return (RemoveComment t c)
+        return (RemoveComment f t c)
 
       parseTrashCategory o = do
         i <- o .: "trashCategoryId"
@@ -963,7 +1070,7 @@ instance ToJSON Change where
   toJSON (RemoveThreadFromCategory c t) = object [ "fromCategoryId" .= c, "removeThreadId" .= t ]
   toJSON (RetitleCategory f t r) = object [ "fromCategoryId" .= f, "toCategoryId" .= t, "retitle" .= r ]
   toJSON (RetitleThread f t r) = object [ "fromThreadId" .= f, "toThreadId" .= t, "retitle" .= r ]
-  toJSON (RemoveComment t c) = object [ "fromThreadId" .= t, "removeCommentId" .= c ]
+  toJSON (RemoveComment f t c) = object [ "fromThreadId" .= f, "toThreadId" .= t, "removeCommentId" .= c ]
   toJSON (TrashCategory i) = object [ "trashCategoryId" .= i ]
   toJSON (UntrashCategory i) = object [ "nonTrashCategoryId" .= i ]
   toJSON (SplitThread t f s c) = object [ "splitThreadId" .= t
@@ -1009,6 +1116,7 @@ instance FromJSON Zettel where
   parseJSON = withObject "Zettel" $ \o -> do
     cs <- o .: "categories"
     ts <- o .: "threads"
+    tc <- o .: "trashcan"
     xs <- o .: "comments"
     rs <- o .: "relations"
     us <- o .: "users"
@@ -1016,6 +1124,7 @@ instance FromJSON Zettel where
     return $ Zettel
       { categories = mapBy categoryId cs
       , threads = mapBy threadId ts
+      , trashcan = S.fromList tc
       , comments = mapBy commentId xs
       , relations = S.fromList rs
       , users = mapBy userId us
@@ -1026,6 +1135,7 @@ instance ToJSON Zettel where
   toJSON z = object
              [ "categories" .= M.elems (categories z)
              , "threads" .= M.elems (threads z)
+             , "trashcan" .= S.toList (trashcan z)
              , "comments" .= M.elems (comments z)
              , "relations" .= S.toList (relations z)
              , "users" .= M.elems (users z)
