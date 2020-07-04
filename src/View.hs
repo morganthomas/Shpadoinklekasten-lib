@@ -145,7 +145,7 @@ addCommentWidget :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
                  => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
 addCommentWidget model@(_,v) = div [class' "s11k-add-comment form-group"] [
   textarea' [ class' "form-control", ("rows", "4"), ("cols", "70"), onSubmitE addComment
-            , onInput (setNewComment model), ("value", textProp (newComment v)) ],
+            , onInput (setCommentField model), ("value", textProp (commentField v)) ],
   button [ class' "form-control btn btn-primary", onClickE addComment ] [ text "Add Comment" ] ]
 
 

@@ -204,25 +204,12 @@ data Zettel = Zettel
 
 
 class ZettelEditor m where
-  saveNewCategory :: CategoryId -> Text -> SessionId -> m ()
-  saveNewThread :: ThreadId -> Text -> [CategoryId] -> SessionId -> m ()
-  saveNewComment :: ThreadId -> CommentId -> Text -> SessionId -> m ()
-  editComment :: CommentId -> Text -> SessionId -> m ()
+  saveChange :: Change -> SessionId -> m ()
   getDatabase :: SessionId -> m Zettel
   login :: UserId -> PasswordHash -> m (Maybe Session)
 
 
-type API =      "api" :> "category" :> Capture "id" CategoryId :> QueryParam' '[Required] "title" Text
-                :> QueryParam' '[Required] "session" SessionId :> Post '[JSON] ()
-           :<|> "api" :> "thread"   :> Capture "id" ThreadId   :> QueryParam' '[Required] "title" Text
-                :> QueryParam' '[Required] "categorization" [CategoryId]
-                :> QueryParam' '[Required] "session" SessionId :> Post '[JSON] ()
-           :<|> "api" :> "comment"  :> Capture "threadId" ThreadId :> Capture "id" CommentId
-                :> ReqBody' '[Required] '[JSON] Text
-                :> QueryParam' '[Required] "session" SessionId :> Post '[JSON] ()
-           :<|> "api" :> "comment" :> Capture "id" CommentId
-                :> ReqBody' '[Required] '[JSON] Text
-                :> QueryParam' '[Required] "session" SessionId :> Post '[JSON] ()
+type API =      "api" :> ReqBody' '[Required] '[JSON] Change :> QueryParam' '[Required] "session" SessionId :> Post '[JSON] ()
            :<|> "api" :> QueryParam' '[Required] "session" SessionId :> Get '[JSON] Zettel
            :<|> "api" :> "login" :> Capture "id" UserId :> ReqBody' '[Required] '[OctetStream] PasswordHash
                  :> Post '[JSON] (Maybe Session)
@@ -233,7 +220,7 @@ data InitialV = InitialV { newCategoryTitle :: Text
   deriving (Eq, Show)
 
 
-data ThreadV = ThreadV { viewedThread :: Thread, newComment :: Text } deriving (Eq, Show)
+data ThreadV = ThreadV { viewedThread :: Thread, commentField :: Text } deriving (Eq, Show)
 
 
 data LoginV = LoginV { userIdField :: Text, passwordField :: Text } deriving (Eq, Show)
@@ -514,6 +501,86 @@ insertAt n y []     = [y]
 insertAt n y (x:xs) = x : insertAt (n-1) y xs
 
 
+newCategory :: ZettelEditor m => CategoryId -> Text -> SessionId -> m ()
+newCategory i t = saveChange (NewCategory i t)
+
+
+newThread :: ZettelEditor m => ThreadId -> Text -> SessionId -> m ()
+newThread i t = saveChange (NewThread i t)
+
+
+newComment :: ZettelEditor m => ThreadId -> CommentId -> Text -> SessionId -> m ()
+newComment i c t = saveChange (NewComment i c t)
+
+
+newEdit :: ZettelEditor m => CommentId -> Text -> SessionId -> m ()
+newEdit i t = saveChange (NewEdit i t)
+
+
+addThreadToCategory :: ZettelEditor m => CategoryId -> ThreadId -> SessionId -> m ()
+addThreadToCategory c t = saveChange (AddThreadToCategory c t)
+
+
+removeThreadFromCategory :: ZettelEditor m => CategoryId -> ThreadId -> SessionId -> m ()
+removeThreadFromCategory c t = saveChange (RemoveThreadFromCategory c t)
+
+
+retitleCategory :: ZettelEditor m => CategoryId -> CategoryId -> Text -> SessionId -> m ()
+retitleCategory f t x = saveChange (RetitleCategory f t x)
+
+
+retitleThread :: ZettelEditor m => ThreadId -> ThreadId -> Text -> SessionId -> m ()
+retitleThread f t x = saveChange (RetitleThread f t x)
+
+
+removeComment :: ZettelEditor m => ThreadId -> ThreadId -> CommentId -> SessionId -> m ()
+removeComment f t c = saveChange (RemoveComment f t c)
+
+
+trashCategory :: ZettelEditor m => CategoryId -> SessionId -> m ()
+trashCategory c = saveChange (TrashCategory c)
+
+
+untrashCategory :: ZettelEditor m => CategoryId -> SessionId -> m ()
+untrashCategory c = saveChange (UntrashCategory c)
+
+
+splitThread :: ZettelEditor m => ThreadId -> ThreadId -> ThreadId -> CommentId -> SessionId -> m ()
+splitThread f a b c = saveChange (SplitThread f a b c)
+
+
+addCommentToThread :: ZettelEditor m => ThreadId -> CommentId -> SessionId -> m ()
+addCommentToThread t c = saveChange (AddCommentToThread t c)
+
+
+addCommentRangeToThread :: ZettelEditor m => ThreadId -> CommentId -> CommentId -> ThreadId -> SessionId -> m ()
+addCommentRangeToThread f s e t = saveChange (AddCommentRangeToThread f s e t)
+
+
+moveComment :: ZettelEditor m => ThreadId -> CommentId -> Int -> SessionId -> m ()
+moveComment t c i = saveChange (MoveComment t c i)
+
+
+moveThread :: ZettelEditor m => CategoryId -> ThreadId -> Int -> SessionId -> m ()
+moveThread c t i = saveChange (MoveThread c t i)
+
+
+newRelationLabel :: ZettelEditor m => RelationLabel -> SessionId -> m ()
+newRelationLabel l = saveChange (NewRelationLabel l)
+
+
+deleteRelationLabel :: ZettelEditor m => RelationLabel -> SessionId -> m ()
+deleteRelationLabel l = saveChange (DeleteRelationLabel l)
+
+
+newRelation :: ZettelEditor m => Relation -> SessionId -> m ()
+newRelation r = saveChange (NewRelation r)
+
+
+deleteRelation :: ZettelEditor m => Relation -> SessionId -> m ()
+deleteRelation r = saveChange (DeleteRelation r)
+
+
 initialViewModel :: Zettel -> InitialV
 initialViewModel z = InitialV "" (M.fromList $ (,"") <$> M.keys (categories z))
 
@@ -574,7 +641,7 @@ addCategory = Continuation . (id,) $ \(z,i) -> do
                , i' { newCategoryTitle = ""
                     , newThreadTitles = M.insert (categoryId c) "" (newThreadTitles i') } )
       return . Continuation . (f,) . const . return . causes . void . forkIO $
-        saveNewCategory newId (newCategoryTitle i) (sessionId s)
+        newCategory newId (newCategoryTitle i) (sessionId s)
 
 
 setNewCategoryTitle :: (Zettel, InitialV) -> Text -> (Zettel, InitialV)
@@ -596,7 +663,7 @@ addThread cat = Continuation . (id,) $ \(z,i) ->
                 i'' = i' { newThreadTitles = M.insert (categoryId cat) "" (newThreadTitles i') }
             in (z'', i'')
       return . Continuation . (f,) . const . return . causes . void . forkIO
-        $ saveNewThread newId t [categoryId cat] (sessionId s)
+        $ saveChange (NewThread newId t <> AddThreadToCategory (categoryId cat) newId) (sessionId s)
     _ -> return (pur id)
 
 
@@ -622,15 +689,15 @@ addComment = Continuation . (id,) $ \(z, ThreadV t txt) -> do
                 z'' = z' { threads = M.insert (threadId t) t'' (threads z')
                          , comments = M.insert cid (Comment cid u today [Edit today txt])
                                       (comments z') }
-                v'  = v { viewedThread = t'', newComment = "" }
+                v'  = v { viewedThread = t'', commentField = "" }
             in (z'', v')
       in return . Continuation . (f,) . const . return . causes . void . forkIO
-         $ saveNewComment (threadId t) cid txt (sessionId s)
+         $ newComment (threadId t) cid txt (sessionId s)
     _ -> return (pur id)
 
 
-setNewComment :: (Zettel, ThreadV) -> Text -> (Zettel, ThreadV)
-setNewComment (z, v) t = (z, v { newComment = t })
+setCommentField :: (Zettel, ThreadV) -> Text -> (Zettel, ThreadV)
+setCommentField (z, v) t = (z, v { commentField = t })
 
 
 getToday :: MonadJSM m => m Day
@@ -1185,15 +1252,12 @@ instance ToJSON Zettel where
 
 
 instance (Monad m, ZettelEditor m) => ZettelEditor (ParDiffT model m) where
-  saveNewCategory i t s = lift $ saveNewCategory i t s
-  saveNewThread i t cs s = lift $ saveNewThread i t cs s
-  saveNewComment t i x s = lift $ saveNewComment t i x s
-  editComment i t s = lift $ editComment i t s
+  saveChange c s = lift $ saveChange c s
   getDatabase s = lift $ getDatabase s
   login u p = lift $ login u p
 
 
-(saveNewCategoryM :<|> saveNewThreadM :<|> saveNewCommentM :<|> editCommentM :<|> getDatabaseM :<|> loginM) = client (Proxy @API)
+(saveChangeM :<|> getDatabaseM :<|> loginM) = client (Proxy @API)
 
 
 newtype App a = App { runApp :: JSM a }
@@ -1234,10 +1298,7 @@ instance MonadUnliftIO App where
 
 
 instance ZettelEditor App where
-  saveNewCategory i t s = runXHR App $ saveNewCategoryM i t s
-  saveNewThread i t  cs s = runXHR App $ saveNewThreadM i t cs s
-  saveNewComment t i x s = runXHR App $ saveNewCommentM t i x s
-  editComment c x s = runXHR App $ editCommentM c x s
+  saveChange c s = runXHR App $ saveChangeM c s
   getDatabase s = runXHR App $ getDatabaseM s
   login u p = runXHR App $ loginM u p
 
