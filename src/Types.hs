@@ -31,6 +31,7 @@ import           Control.ShpadoinkleContinuation
 import           Data.Aeson
 import           Data.ByteString.Lazy (fromStrict, toStrict)
 import           Data.Either.Extra (eitherToMaybe)
+import           Data.Function ((&))
 import           Data.List (concatMap, uncons, findIndex, dropWhile, takeWhile)
 import qualified Data.Map as M
 import           Data.Maybe (catMaybes, fromMaybe, maybeToList, isNothing)
@@ -195,6 +196,7 @@ data Zettel = Zettel
   , threads :: M.Map ThreadId Thread
   , trashcan :: S.Set ThreadId
   , comments :: M.Map CommentId Comment
+  , relationLabels :: S.Set RelationLabel
   , relations :: S.Set Relation
   , users :: M.Map UserId UserProfile
   , session :: Maybe Session }
@@ -292,7 +294,7 @@ coproductIsoModel = piiso coproductToModel modelToCoproduct
 
 
 emptyZettel :: Zettel
-emptyZettel = Zettel mempty mempty mempty mempty mempty mempty Nothing
+emptyZettel = Zettel mempty mempty mempty mempty mempty mempty mempty Nothing
 
 
 whoAmI :: Zettel -> Maybe UserId
@@ -475,12 +477,41 @@ applyChange _ d (SplitThread it ia ib ic) z = fromMaybe z $ do
              , trashcan = S.insert it (trashcan z)
              , categories = replaceIds <$> categories z }
   where replaceIds c = c { categoryThreadIds = interpolateAt it [ia, ib] (categoryThreadIds c) }
-
         interpolateAt :: Eq a => a -> [a] -> [a] -> [a]
         interpolateAt _ _  []     = []
         interpolateAt x ys (z:zs)
           | x == z    = ys ++ interpolateAt x ys zs
           | otherwise = z : interpolateAt x ys zs
+applyChange _ _ (AddCommentToThread it ic) z = fromMaybe z $ do
+  t <- M.lookup it (threads z)
+  _ <- M.lookup ic (comments z)
+  return $ z { threads = M.insert it t { threadCommentIds = threadCommentIds t ++ [ic] } (threads z) }
+applyChange _ _ (AddCommentRangeToThread it is ie iu) z = fromMaybe z $ do
+  t <- M.lookup it (threads z)
+  u <- M.lookup iu (threads z)
+  let cs = takeUntil (== ie) $ dropWhile (/= is) (threadCommentIds t)
+  return $ z { threads = M.insert iu u { threadCommentIds = threadCommentIds u ++ cs } (threads z) }
+  where takeUntil p []     = []
+        takeUntil p (x:xs) = if p x then [x] else x : takeUntil p xs
+applyChange _ _ (MoveComment it ic i) z = fromMaybe z $ do
+  t <- M.lookup it (threads z)
+  let cs = threadCommentIds t & filter (/= ic) & insertAt i ic
+  return $ z { threads = M.insert it t { threadCommentIds = cs } (threads z) }
+applyChange _ _ (MoveThread ic it i) z = fromMaybe z $ do
+  c <- M.lookup ic (categories z)
+  let ts = categoryThreadIds c & filter (/= it) & insertAt i it
+  return $ z { categories = M.insert ic c { categoryThreadIds = ts } (categories z) }
+applyChange _ _ (NewRelationLabel l) z = z { relationLabels = S.insert l (relationLabels z) }
+applyChange _ _ (DeleteRelationLabel l) z = z { relationLabels = S.delete l (relationLabels z) }
+applyChange _ _ (NewRelation r) z = z { relations = S.insert r (relations z) }
+applyChange _ _ (DeleteRelation r) z = z { relations = S.delete r (relations z) }
+applyChange u d (ComposedChanges cs) z = (foldl (.) id $ applyChange u d <$> cs) z
+
+
+insertAt :: Int -> a -> [a] -> [a]
+insertAt 0 y xs     = y:xs
+insertAt n y []     = [y]
+insertAt n y (x:xs) = x : insertAt (n-1) y xs
 
 
 initialViewModel :: Zettel -> InitialV
@@ -944,6 +975,14 @@ instance ToHttpApiData Relation where
   toUrlPiece (Asym r) = toUrlPiece r
 
 
+instance Semigroup Change where
+  x <> y = ComposedChanges [x,y]
+
+
+instance Monoid Change where
+  mempty = ComposedChanges []
+
+
 instance FromJSON Change where
   parseJSON x = (withObject "Change" $ \o ->
         parseNewCategory o <|> parseNewThread o <|> parseNewComment o
@@ -1118,6 +1157,7 @@ instance FromJSON Zettel where
     ts <- o .: "threads"
     tc <- o .: "trashcan"
     xs <- o .: "comments"
+    ls <- o .: "relationLabels"
     rs <- o .: "relations"
     us <- o .: "users"
     s  <- o .: "session"
@@ -1126,6 +1166,7 @@ instance FromJSON Zettel where
       , threads = mapBy threadId ts
       , trashcan = S.fromList tc
       , comments = mapBy commentId xs
+      , relationLabels = S.fromList ls
       , relations = S.fromList rs
       , users = mapBy userId us
       , session = s }
@@ -1137,6 +1178,7 @@ instance ToJSON Zettel where
              , "threads" .= M.elems (threads z)
              , "trashcan" .= S.toList (trashcan z)
              , "comments" .= M.elems (comments z)
+             , "relationLabels" .= S.toList (relationLabels z)
              , "relations" .= S.toList (relations z)
              , "users" .= M.elems (users z)
              , "session" .= session z ]
