@@ -19,6 +19,12 @@ let
     ref = "master";
   };
 
+  Shpadoinkle-continuations-src = builtins.fetchGit {
+    url = https://github.com/morganthomas/Shpadoinkle-continuations.git;
+    rev = "3490d5cb07ce22af4224d6985c0135a86c52654e";
+    ref = "master";
+  };
+
   next-uuid-src = builtins.fetchGit {
     url = https://github.com/morganthomas/next-uuid.git;
     rev = "ddcea7d70a01bf667c2ec3d82cef46e4b6852499";
@@ -62,7 +68,7 @@ let
     extra = hsuper.extra;
     jsaddle = hsuper.jsaddle;
     next-uuid = hsuper.callCabal2nix "next-uuid" next-uuid-src {};
-    Shpadoinkle-continuations = hsuper.Shpadoinkle-continuations;
+    Shpadoinkle-continuations = hsuper.callCabal2nix "Shpadoinkle-continuations" Shpadoinkle-continuations-src {};
     transformers = hsuper.transformers;
     unliftio = hsuper.unliftio;
   };

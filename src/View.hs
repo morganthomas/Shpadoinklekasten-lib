@@ -98,10 +98,10 @@ reloadWidget = div [ class' "s11k-reload btn btn-link", onClickE reload ] [ "Rel
 addCategoryWidget :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
                   => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
 addCategoryWidget model@(_,i) = div [class' "s11k-add-category form-group row"] [
-  input [ class' "form-control col-sm-9", ("type", "text"), onSubmitE addCategory
+  input [ class' "form-control col-sm-9", ("type", "text"), onSubmitE handleNewCategory
         , onInput (setNewCategoryTitle model)
         , ("value", textProp (newCategoryTitle i)) ] [],
-  button [ class' "form-control col btn btn-primary", onClickE addCategory ] [ text "New Category" ] ]
+  button [ class' "form-control col btn btn-primary", onClickE handleNewCategory ] [ text "New Category" ] ]
 
 
 categoryList :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
@@ -121,10 +121,10 @@ categorySummary model cat = div [class' "s11k-category-summary mb-3"] [
 addThreadWidget :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
                 => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
 addThreadWidget model cat = div [class' "s11k-add-thread row form-group"] [
-  input [ class' "form-control col-sm-9", ("type", "text"), onSubmitE (addThread cat)
+  input [ class' "form-control col-sm-9", ("type", "text"), onSubmitE (handleNewThread cat)
         , onInput (setNewThreadTitle model cat)
         , ("value", textProp (getNewThreadTitle model cat)) ] [],
-  button [ class' "form-control col-sm-3 btn btn-primary", onClickE (addThread cat) ] [ text "New Thread" ] ]
+  button [ class' "form-control col-sm-3 btn btn-primary", onClickE (handleNewThread cat) ] [ text "New Thread" ] ]
 
 
 threadSummary :: MonadJSM m => (Zettel, InitialV) -> Thread -> HtmlM m (Zettel, InitialV)
@@ -144,9 +144,9 @@ backToInitial = div [ class' "s11k-back btn btn-link"
 addCommentWidget :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
                  => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
 addCommentWidget model@(_,v) = div [class' "s11k-add-comment form-group"] [
-  textarea' [ class' "form-control", ("rows", "4"), ("cols", "70"), onSubmitE addComment
+  textarea' [ class' "form-control", ("rows", "4"), ("cols", "70"), onSubmitE handleNewComment
             , onInput (setCommentField model), ("value", textProp (commentField v)) ],
-  button [ class' "form-control btn btn-primary", onClickE addComment ] [ text "Add Comment" ] ]
+  button [ class' "form-control btn btn-primary", onClickE handleNewComment ] [ text "Add Comment" ] ]
 
 
 {-linkView :: MonadJSM m => Link -> HtmlM m (Zettel, ThreadV)
