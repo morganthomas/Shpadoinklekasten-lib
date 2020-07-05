@@ -204,8 +204,8 @@ data Zettel = Zettel
 
 
 class ZettelEditor m where
-  saveChange :: Change -> Session -> m ()
-  getDatabase :: Session -> m Zettel
+  saveChange :: Change -> SessionId -> m ()
+  getDatabase :: SessionId -> m Zettel
   login :: UserId -> PasswordHash -> m (Maybe Session)
 
 
@@ -506,83 +506,83 @@ insertAt n y []     = [y]
 insertAt n y (x:xs) = x : insertAt (n-1) y xs
 
 
-newCategory :: ZettelEditor m => CategoryId -> Text -> Session -> m ()
+newCategory :: ZettelEditor m => CategoryId -> Text -> SessionId -> m ()
 newCategory i t = saveChange (NewCategory i t)
 
 
-newThread :: ZettelEditor m => CategoryId -> ThreadId -> Text -> Session -> m ()
+newThread :: ZettelEditor m => CategoryId -> ThreadId -> Text -> SessionId -> m ()
 newThread ic it t = saveChange (NewThread ic it t)
 
 
-newComment :: ZettelEditor m => ThreadId -> CommentId -> Text -> Session -> m ()
+newComment :: ZettelEditor m => ThreadId -> CommentId -> Text -> SessionId -> m ()
 newComment i c t = saveChange (NewComment i c t)
 
 
-newEdit :: ZettelEditor m => CommentId -> Text -> Session -> m ()
+newEdit :: ZettelEditor m => CommentId -> Text -> SessionId -> m ()
 newEdit i t = saveChange (NewEdit i t)
 
 
-addThreadToCategory :: ZettelEditor m => CategoryId -> ThreadId -> Session -> m ()
+addThreadToCategory :: ZettelEditor m => CategoryId -> ThreadId -> SessionId -> m ()
 addThreadToCategory c t = saveChange (AddThreadToCategory c t)
 
 
-removeThreadFromCategory :: ZettelEditor m => CategoryId -> ThreadId -> Session -> m ()
+removeThreadFromCategory :: ZettelEditor m => CategoryId -> ThreadId -> SessionId -> m ()
 removeThreadFromCategory c t = saveChange (RemoveThreadFromCategory c t)
 
 
-retitleCategory :: ZettelEditor m => CategoryId -> CategoryId -> Text -> Session -> m ()
+retitleCategory :: ZettelEditor m => CategoryId -> CategoryId -> Text -> SessionId -> m ()
 retitleCategory f t x = saveChange (RetitleCategory f t x)
 
 
-retitleThread :: ZettelEditor m => ThreadId -> ThreadId -> Text -> Session -> m ()
+retitleThread :: ZettelEditor m => ThreadId -> ThreadId -> Text -> SessionId -> m ()
 retitleThread f t x = saveChange (RetitleThread f t x)
 
 
-removeComment :: ZettelEditor m => ThreadId -> ThreadId -> CommentId -> Session -> m ()
+removeComment :: ZettelEditor m => ThreadId -> ThreadId -> CommentId -> SessionId -> m ()
 removeComment f t c = saveChange (RemoveComment f t c)
 
 
-trashCategory :: ZettelEditor m => CategoryId -> Session -> m ()
+trashCategory :: ZettelEditor m => CategoryId -> SessionId -> m ()
 trashCategory c = saveChange (TrashCategory c)
 
 
-untrashCategory :: ZettelEditor m => CategoryId -> Session -> m ()
+untrashCategory :: ZettelEditor m => CategoryId -> SessionId -> m ()
 untrashCategory c = saveChange (UntrashCategory c)
 
 
-splitThread :: ZettelEditor m => ThreadId -> ThreadId -> ThreadId -> CommentId -> Session -> m ()
+splitThread :: ZettelEditor m => ThreadId -> ThreadId -> ThreadId -> CommentId -> SessionId -> m ()
 splitThread f a b c = saveChange (SplitThread f a b c)
 
 
-addCommentToThread :: ZettelEditor m => ThreadId -> CommentId -> Session -> m ()
+addCommentToThread :: ZettelEditor m => ThreadId -> CommentId -> SessionId -> m ()
 addCommentToThread t c = saveChange (AddCommentToThread t c)
 
 
-addCommentRangeToThread :: ZettelEditor m => ThreadId -> CommentId -> CommentId -> ThreadId -> Session -> m ()
+addCommentRangeToThread :: ZettelEditor m => ThreadId -> CommentId -> CommentId -> ThreadId -> SessionId -> m ()
 addCommentRangeToThread f s e t = saveChange (AddCommentRangeToThread f s e t)
 
 
-moveComment :: ZettelEditor m => ThreadId -> CommentId -> Int -> Session -> m ()
+moveComment :: ZettelEditor m => ThreadId -> CommentId -> Int -> SessionId -> m ()
 moveComment t c i = saveChange (MoveComment t c i)
 
 
-moveThread :: ZettelEditor m => CategoryId -> ThreadId -> Int -> Session -> m ()
+moveThread :: ZettelEditor m => CategoryId -> ThreadId -> Int -> SessionId -> m ()
 moveThread c t i = saveChange (MoveThread c t i)
 
 
-newRelationLabel :: ZettelEditor m => RelationLabel -> Session -> m ()
+newRelationLabel :: ZettelEditor m => RelationLabel -> SessionId -> m ()
 newRelationLabel l = saveChange (NewRelationLabel l)
 
 
-deleteRelationLabel :: ZettelEditor m => RelationLabel -> Session -> m ()
+deleteRelationLabel :: ZettelEditor m => RelationLabel -> SessionId -> m ()
 deleteRelationLabel l = saveChange (DeleteRelationLabel l)
 
 
-newRelation :: ZettelEditor m => Relation -> Session -> m ()
+newRelation :: ZettelEditor m => Relation -> SessionId -> m ()
 newRelation r = saveChange (NewRelation r)
 
 
-deleteRelation :: ZettelEditor m => Relation -> Session -> m ()
+deleteRelation :: ZettelEditor m => Relation -> SessionId -> m ()
 deleteRelation r = saveChange (DeleteRelation r)
 
 
@@ -620,7 +620,7 @@ handleLogin = Continuation . (id,) $ \(z, LoginV u p) -> do
         return . Continuation . (first (\z' -> z' { session = Just s }),)
         $ \(z',v) -> do setStorage "session" (sessionId s)
                         navigate @SPA InitialRoute
-                        z'' <- getDatabase s
+                        z'' <- getDatabase (sessionId s)
                         return . Continuation . (first (const z''),)
                           . const . return . causes $ navigate @SPA InitialRoute
       Nothing -> return (pur id)
@@ -630,7 +630,7 @@ reload :: Monad m => ZettelEditor m => Continuation m (Zettel, InitialV)
 reload = Continuation . (id,) $ \(z,_) ->
   case session z of
     Just s -> do
-      z' <- getDatabase s
+      z' <- getDatabase (sessionId s)
       return . pur . const $ (z', initialViewModel z')
     Nothing -> return (pur id)
 
@@ -638,7 +638,7 @@ reload = Continuation . (id,) $ \(z,_) ->
 handleNewCategory :: MonadJSM m => MonadUnliftIO m => ZettelEditor m => Continuation m (Zettel, InitialV)
 handleNewCategory = Continuation . (id,) $ \(z,i) -> do
   newId <- CategoryId <$> liftIO randomIO
-  return $ maybe (pur id) (voidRunContinuationT . newCategory newId (newCategoryTitle i)) (session z)
+  return $ maybe (pur id) (voidRunContinuationT . newCategory newId (newCategoryTitle i)) (sessionId <$> session z)
 
 
 setNewCategoryTitle :: (Zettel, InitialV) -> Text -> (Zettel, InitialV)
@@ -651,7 +651,7 @@ handleNewThread cat = Continuation . (id,) $ \(z,i) ->
   case (M.lookup (categoryId cat) (newThreadTitles i), session z) of
     (Just t, Just s) -> do
       newId <- ThreadId <$> liftIO randomIO
-      return $ maybe (pur id) (voidRunContinuationT . newThread (categoryId cat) newId t) (session z)
+      return $ maybe (pur id) (voidRunContinuationT . newThread (categoryId cat) newId t) (sessionId <$> session z)
     _ -> return (pur id)
 
 
@@ -668,7 +668,7 @@ getNewThreadTitle (_, i) cat = fromMaybe "" $ M.lookup (categoryId cat) (newThre
 handleNewComment :: MonadJSM m => MonadUnliftIO m => ZettelEditor m => Continuation m (Zettel, ThreadV)
 handleNewComment = Continuation . (id,) $ \(z, ThreadV t txt) -> do
   newId <- CommentId <$> liftIO randomIO
-  return $ maybe (pur id) (voidRunContinuationT . newComment (threadId t) newId txt) (session z)
+  return $ maybe (pur id) (voidRunContinuationT . newComment (threadId t) newId txt) (sessionId <$> session z)
 
 
 setCommentField :: (Zettel, ThreadV) -> Text -> (Zettel, ThreadV)
@@ -1274,8 +1274,8 @@ instance MonadUnliftIO App where
 
 
 instance ZettelEditor App where
-  saveChange c s = runXHR App $ saveChangeM c (sessionId s)
-  getDatabase s = runXHR App $ getDatabaseM (sessionId s)
+  saveChange c s = runXHR App $ saveChangeM c s
+  getDatabase s = runXHR App $ getDatabaseM s
   login u p = runXHR App $ loginM u p
 
 
@@ -1286,7 +1286,10 @@ instance ( ZettelEditor m
   saveChange c s = ContinuationT $ do
     void . forkIO $ saveChange c s
     d <- getToday
-    return . ((),) $ pur (applyChange (sessionUser s) d c)
+    return . ((),) $ pur
+      (\z -> case session z of
+        Just s -> applyChange (sessionUser s) d c z
+        Nothing -> z)
   getDatabase s = lift $ getDatabase s
   login u p = lift $ login u p
 
