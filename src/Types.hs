@@ -314,13 +314,17 @@ commentLastEdited :: Comment -> Day
 commentLastEdited c = fromMaybe (fromGregorian 0 0 0) $ editCreated . fst <$> uncons (commentEdits c)
 
 
-nextThreadId :: ThreadId -> ThreadId
-nextThreadId (ThreadId i) = ThreadId (nextUUID i)
+nextThreadId :: Zettel -> ThreadId -> ThreadId
+nextThreadId z (ThreadId i) =
+  let i' = ThreadId (nextUUID i) in
+  case M.lookup i' (threads z) of
+    Just _ -> nextThreadId z i'
+    Nothing -> i'
 
 
 invertChange :: Zettel -> Change -> Change
 invertChange _ (NewCategory c _) = TrashCategory c
-invertChange _ (NewComment t c _) = RemoveComment t (nextThreadId t) c
+invertChange z (NewComment t c _) = RemoveComment t (nextThreadId z t) c
 invertChange z (NewEdit c x) = ComposedChanges . maybeToList
   $ NewEdit c . commentText <$> M.lookup c (comments z)
 invertChange z (AddThreadToCategory c t) = ComposedChanges $
@@ -352,9 +356,9 @@ invertChange z (SplitThread t f s c) = ComposedChanges $
   do thread <- maybeToList (M.lookup t (threads z))
      c <- categorization thread
      [RemoveThreadFromCategory c f, RemoveThreadFromCategory c s, AddThreadToCategory c t]
-invertChange _ (AddCommentToThread t c) = RemoveComment t (nextThreadId t) c
+invertChange z (AddCommentToThread t c) = RemoveComment t (nextThreadId z t) c
 invertChange z (AddCommentRangeToThread f s e t) =
-  let t' = nextThreadId t in ComposedChanges $
+  let t' = nextThreadId z t in ComposedChanges $
     do thread <- maybeToList (M.lookup f (threads z))
        c <- takeWhile (not . (== e)) . dropWhile (not . (== s)) $ threadCommentIds thread
        [RemoveComment t t' c]
