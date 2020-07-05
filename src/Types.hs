@@ -205,12 +205,12 @@ data Zettel = Zettel
 
 class ZettelEditor m where
   saveChange :: Change -> Session -> m ()
-  getDatabase :: SessionId -> m Zettel
+  getDatabase :: Session -> m Zettel
   login :: UserId -> PasswordHash -> m (Maybe Session)
 
 
-type API =      "api" :> ReqBody' '[Required] '[JSON] (Change, SessionId) :> Post '[JSON] ()
-           :<|> "api" :> QueryParam' '[Required] "session" SessionId :> Get '[JSON] Zettel
+type API =      "api" :> ReqBody' '[Required] '[JSON] Change :> Header' '[Required] "session" SessionId :> Post '[JSON] ()
+           :<|> "api" :> Header' '[Required] "session" SessionId :> Get '[JSON] Zettel
            :<|> "api" :> "login" :> Capture "id" UserId :> ReqBody' '[Required] '[OctetStream] PasswordHash
                  :> Post '[JSON] (Maybe Session)
 
@@ -620,7 +620,7 @@ handleLogin = Continuation . (id,) $ \(z, LoginV u p) -> do
         return . Continuation . (first (\z' -> z' { session = Just s }),)
         $ \(z',v) -> do setStorage "session" (sessionId s)
                         navigate @SPA InitialRoute
-                        z'' <- getDatabase (sessionId s)
+                        z'' <- getDatabase s
                         return . Continuation . (first (const z''),)
                           . const . return . causes $ navigate @SPA InitialRoute
       Nothing -> return (pur id)
@@ -630,7 +630,7 @@ reload :: Monad m => ZettelEditor m => Continuation m (Zettel, InitialV)
 reload = Continuation . (id,) $ \(z,_) ->
   case session z of
     Just s -> do
-      z' <- getDatabase (sessionId s)
+      z' <- getDatabase s
       return . pur . const $ (z', initialViewModel z')
     Nothing -> return (pur id)
 
@@ -1274,8 +1274,8 @@ instance MonadUnliftIO App where
 
 
 instance ZettelEditor App where
-  saveChange c s = runXHR App $ saveChangeM (c, sessionId s)
-  getDatabase s = runXHR App $ getDatabaseM s
+  saveChange c s = runXHR App $ saveChangeM c (sessionId s)
+  getDatabase s = runXHR App $ getDatabaseM (sessionId s)
   login u p = runXHR App $ loginM u p
 
 
