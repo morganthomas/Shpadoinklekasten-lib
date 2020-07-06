@@ -31,16 +31,16 @@ template js v = html_
   , body_ [ v ] ]
 
 
-viewRouter :: HasZettelHandlers m => Route -> IO (HtmlM m Model)
+viewRouter :: ZettelController m => Route -> IO (HtmlM m ViewModel)
 viewRouter r = let model = initialModel r emptyZettel
   in view . ($ model) <$> runContinuation (router r) model
 
 
-view :: HasZettelHandlers m => Model -> HtmlM m Model
-view model = viewContainer model . pimap coproductIsoModel . viewCases $ modelToCoproduct model
+view :: ZettelController m => ViewModel -> HtmlM m ViewModel
+view model = viewContainer model . pimap coproductIsoViewModel . viewCases $ viewModelToCoproduct model
 
 
-viewContainer :: Monad m => Model -> HtmlM m a -> HtmlM m a
+viewContainer :: Monad m => ViewModel -> HtmlM m a -> HtmlM m a
 viewContainer model v =
   div [class' "container-fluid s11k-app"] [
       h1_ [ "Shpadoinklekasten" ],
@@ -48,18 +48,18 @@ viewContainer model v =
       div [class' "s11k-view"] [ v ] ]
 
 
-viewCases :: HasZettelHandlers m => ModelCoproduct -> HtmlM m ModelCoproduct
+viewCases :: ZettelController m => ViewModelCoproduct -> HtmlM m ViewModelCoproduct
 viewCases = initialView `eitherH` threadView `eitherH` loginView
 
 
-initialView :: HasZettelHandlers m => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
+initialView :: ZettelController m => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
 initialView model = div [class' "s11k-view-initial"] [
   reloadWidget,
   addCategoryWidget model,
   categoryList model ]
 
 
-threadView :: HasZettelHandlers m => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
+threadView :: ZettelController m => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
 threadView model@(z, v) =
   let t = viewedThread v
   in div [class' "s11k-view-thread"] $ [
@@ -75,7 +75,7 @@ threadView model@(z, v) =
     div [class' "s11k-comments"] (commentView <$> threadComments z t) ]
 
 
-loginView :: HasZettelHandlers m => (Zettel, LoginV) -> HtmlM m (Zettel, LoginV)
+loginView :: ZettelController m => (Zettel, LoginV) -> HtmlM m (Zettel, LoginV)
 loginView model@(z,l) =
   div [class' "s11k-login form-group"] [
     input' [ class' "form-control", type' "text", placeholder "User ID", onInput (setUserId model) ],
@@ -86,11 +86,11 @@ loginView model@(z,l) =
 -- initialView pieces
 
 
-reloadWidget :: HasZettelHandlers m => HtmlM m (Zettel, InitialV)
+reloadWidget :: ZettelController m => HtmlM m (Zettel, InitialV)
 reloadWidget = div [ class' "s11k-reload btn btn-link", onClickE reload ] [ "Reload" ]
 
 
-addCategoryWidget :: HasZettelHandlers m => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
+addCategoryWidget :: ZettelController m => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
 addCategoryWidget model@(_,i) = div [class' "s11k-add-category form-group row"] [
   input [ class' "form-control col-sm-9", ("type", "text"), onSubmitE handleNewCategory
         , onInput (setNewCategoryTitle model)
@@ -98,19 +98,19 @@ addCategoryWidget model@(_,i) = div [class' "s11k-add-category form-group row"] 
   button [ class' "form-control col btn btn-primary", onClickE handleNewCategory ] [ text "New Category" ] ]
 
 
-categoryList :: HasZettelHandlers m => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
+categoryList :: ZettelController m => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
 categoryList model = div [class' "s11k-category-list"]
                      $ categorySummary model <$> M.elems (categories (fst model))
 
 
-categorySummary :: HasZettelHandlers m => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
+categorySummary :: ZettelController m => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
 categorySummary model cat = div [class' "s11k-category-summary mb-3"] [
   h2 [class' "s11k-category-title"] [ text (categoryTitle cat) ],
   addThreadWidget model cat,
   div [class' "s11k-thread-summaries row"] (threadSummary model <$> categoryThreads (fst model) cat) ]
 
 
-addThreadWidget :: HasZettelHandlers m => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
+addThreadWidget :: ZettelController m => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
 addThreadWidget model cat = div [class' "s11k-add-thread row form-group"] [
   input [ class' "form-control col-sm-9", ("type", "text"), onSubmitE (handleNewThread cat)
         , onInput (setNewThreadTitle model cat)
@@ -118,7 +118,7 @@ addThreadWidget model cat = div [class' "s11k-add-thread row form-group"] [
   button [ class' "form-control col-sm-3 btn btn-primary", onClickE (handleNewThread cat) ] [ text "New Thread" ] ]
 
 
-threadSummary :: HasZettelHandlers m => (Zettel, InitialV) -> Thread -> HtmlM m (Zettel, InitialV)
+threadSummary :: ZettelController m => (Zettel, InitialV) -> Thread -> HtmlM m (Zettel, InitialV)
 threadSummary _ t = div [ class' "s11k-thread-summary col-sm-4 col-md-3 col-lg-2 mb-2"
                         , onClickM_ $ navigate @SPA (ThreadRoute (threadId t)) ]
                         [ text (threadTitle t) ]
@@ -132,7 +132,7 @@ backToInitial = div [ class' "s11k-back btn btn-link"
                     , onClickM_ (navigate @SPA InitialRoute) ] [ text "Back" ]
 
 
-addCommentWidget :: HasZettelHandlers m => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
+addCommentWidget :: ZettelController m => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
 addCommentWidget model@(_,v) = div [class' "s11k-add-comment form-group"] [
   textarea' [ class' "form-control", ("rows", "4"), ("cols", "70"), onSubmitE handleNewComment
             , onInput (setCommentField model), ("value", textProp (commentField v)) ],
