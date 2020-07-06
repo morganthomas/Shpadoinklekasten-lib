@@ -186,9 +186,8 @@ data Change = NewCategory CategoryId Text
 data Session = Session
   { sessionId      :: SessionId
   , sessionUser    :: UserId
-  , sessionCreated :: Day
-  , sessionChanges :: [Change] }
-  deriving (Eq, Show)
+  , sessionCreated :: Day }
+  deriving (Eq, Read, Show)
 
 
 data Zettel = Zettel
@@ -1181,16 +1180,14 @@ instance FromJSON Session where
     i <- o .: "id"
     u <- o .: "user"
     c <- o .: "created"
-    h <- o .: "changes"
-    return (Session i u c h)
+    return (Session i u c)
 
 
 instance ToJSON Session where
   toJSON s = object
     [ "id" .= sessionId s
     , "user" .= sessionUser s
-    , "created" .= sessionCreated s
-    , "changes" .= sessionChanges s ]
+    , "created" .= sessionCreated s]
 
 
 mapBy :: Ord k => (v -> k) -> [v] -> M.Map k v
