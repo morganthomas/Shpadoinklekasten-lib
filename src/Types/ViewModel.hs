@@ -116,10 +116,6 @@ setPassword :: (Zettel, LoginV) -> Text -> (Zettel, LoginV)
 setPassword (z, LoginV u _) p = (z, LoginV u p)
 
 
-hash :: Text -> JSM PasswordHash
-hash t = PasswordHash <$> (jsg1 ("sha256" :: Text) (val t) >>= valToText)
-
-
 setNewCategoryTitle :: (Zettel, InitialV) -> Text -> (Zettel, InitialV)
 setNewCategoryTitle (z, i) t = (z, i { newCategoryTitle = t })
 

@@ -214,6 +214,10 @@ commentLastEdited :: Comment -> Day
 commentLastEdited c = fromMaybe (fromGregorian 0 0 0) $ editCreated . fst <$> uncons (commentEdits c)
 
 
+hash :: Text -> JSM PasswordHash
+hash t = PasswordHash <$> (jsg1 ("sha256" :: Text) (val t) >>= valToText)
+
+
 nextThreadId :: Zettel -> ThreadId -> ThreadId
 nextThreadId z (ThreadId i) =
   let i' = ThreadId (nextUUID i) in
