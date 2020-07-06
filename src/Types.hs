@@ -236,6 +236,14 @@ data View =
 type Model = (Zettel, View)
 
 
+class MonadJSM m => HasZettelHandlers m where
+  handleLogin :: Continuation m (Zettel, LoginV)
+  reload :: Continuation m (Zettel, InitialV)
+  handleNewCategory :: Continuation m (Zettel, InitialV)
+  handleNewThread :: Category -> Continuation m (Zettel, InitialV)
+  handleNewComment :: Continuation m (Zettel, ThreadV)
+
+
 data Route = InitialRoute | ThreadRoute ThreadId | LoginRoute
 
 
@@ -610,49 +618,8 @@ hash :: Text -> JSM PasswordHash
 hash t = PasswordHash <$> (jsg1 ("sha256" :: Text) (val t) >>= valToText)
 
 
-handleLogin :: MonadJSM m => ZettelEditor m => Continuation m (Zettel, LoginV)
-handleLogin = Continuation . (id,) $ \(z, LoginV u p) -> do
-  h   <- liftJSM (hash p)
-  return . Continuation . (second (const (LoginV "" "")),) $ \_ -> do
-    res <- login (UserId u) h
-    case res of
-      Just s ->
-        return . Continuation . (first (\z' -> z' { session = Just s }),)
-        $ \(z',v) -> do setStorage "session" (sessionId s)
-                        navigate @SPA InitialRoute
-                        z'' <- getDatabase (sessionId s)
-                        return . Continuation . (first (const z''),)
-                          . const . return . causes $ navigate @SPA InitialRoute
-      Nothing -> return (pur id)
-
-
-reload :: Monad m => ZettelEditor m => Continuation m (Zettel, InitialV)
-reload = Continuation . (id,) $ \(z,_) ->
-  case session z of
-    Just s -> do
-      z' <- getDatabase (sessionId s)
-      return . pur . const $ (z', initialViewModel z')
-    Nothing -> return (pur id)
-
-
-handleNewCategory :: MonadJSM m => MonadUnliftIO m => ZettelEditor m => Continuation m (Zettel, InitialV)
-handleNewCategory = Continuation . (id,) $ \(z,i) -> do
-  newId <- CategoryId <$> liftIO randomIO
-  return $ maybe (pur id) (voidRunContinuationT . newCategory newId (newCategoryTitle i)) (sessionId <$> session z)
-
-
 setNewCategoryTitle :: (Zettel, InitialV) -> Text -> (Zettel, InitialV)
 setNewCategoryTitle (z, i) t = (z, i { newCategoryTitle = t })
-
-
-handleNewThread :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
-  => Category -> Continuation m (Zettel, InitialV)
-handleNewThread cat = Continuation . (id,) $ \(z,i) ->
-  case (M.lookup (categoryId cat) (newThreadTitles i), session z) of
-    (Just t, Just s) -> do
-      newId <- ThreadId <$> liftIO randomIO
-      return $ maybe (pur id) (voidRunContinuationT . newThread (categoryId cat) newId t) (sessionId <$> session z)
-    _ -> return (pur id)
 
 
 setNewThreadTitle :: (Zettel, InitialV) -> Category -> Text -> (Zettel, InitialV)
@@ -663,12 +630,6 @@ setNewThreadTitle model cat t =
 
 getNewThreadTitle :: (Zettel, InitialV) -> Category -> Text
 getNewThreadTitle (_, i) cat = fromMaybe "" $ M.lookup (categoryId cat) (newThreadTitles i)
-
-
-handleNewComment :: MonadJSM m => MonadUnliftIO m => ZettelEditor m => Continuation m (Zettel, ThreadV)
-handleNewComment = Continuation . (id,) $ \(z, ThreadV t txt) -> do
-  newId <- CommentId <$> liftIO randomIO
-  return $ maybe (pur id) (voidRunContinuationT . newComment (threadId t) newId txt) (sessionId <$> session z)
 
 
 setCommentField :: (Zettel, ThreadV) -> Text -> (Zettel, ThreadV)
@@ -694,6 +655,48 @@ splitOn x xs = do
     splitOn' x ys (z:zs)
       | x == z    = Just (ys, zs)
       | otherwise = splitOn' x (z:ys) zs
+
+
+instance ( Monad m
+         , MonadJSM m
+         , MonadUnliftIO m
+         , ZettelEditor m
+         ) => HasZettelHandlers m where
+  handleLogin = Continuation . (id,) $ \(z, LoginV u p) -> do
+    h   <- liftJSM (hash p)
+    return . Continuation . (second (const (LoginV "" "")),) $ \_ -> do
+      res <- login (UserId u) h
+      case res of
+        Just s ->
+          return . Continuation . (first (\z' -> z' { session = Just s }),)
+          $ \(z',v) -> do setStorage "session" (sessionId s)
+                          navigate @SPA InitialRoute
+                          z'' <- getDatabase (sessionId s)
+                          return . Continuation . (first (const z''),)
+                            . const . return . causes $ navigate @SPA InitialRoute
+        Nothing -> return (pur id)
+  
+  reload = Continuation . (id,) $ \(z,_) ->
+    case session z of
+      Just s -> do
+        z' <- getDatabase (sessionId s)
+        return . pur . const $ (z', initialViewModel z')
+      Nothing -> return (pur id)
+  
+  handleNewCategory = Continuation . (id,) $ \(z,i) -> do
+    newId <- CategoryId <$> liftIO randomIO
+    return $ maybe (pur id) (voidRunContinuationT . newCategory newId (newCategoryTitle i)) (sessionId <$> session z)
+  
+  handleNewThread cat = Continuation . (id,) $ \(z,i) ->
+    case (M.lookup (categoryId cat) (newThreadTitles i), session z) of
+      (Just t, Just s) -> do
+        newId <- ThreadId <$> liftIO randomIO
+        return $ maybe (pur id) (voidRunContinuationT . newThread (categoryId cat) newId t) (sessionId <$> session z)
+      _ -> return (pur id)
+  
+  handleNewComment = Continuation . (id,) $ \(z, ThreadV t txt) -> do
+    newId <- CommentId <$> liftIO randomIO
+    return $ maybe (pur id) (voidRunContinuationT . newComment (threadId t) newId txt) (sessionId <$> session z)
 
 
 instance Ord RelationLabel where

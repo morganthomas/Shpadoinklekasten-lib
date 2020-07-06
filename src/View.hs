@@ -1,3 +1,4 @@
+{-# LANGUAGE MonoLocalBinds    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications  #-}
 
@@ -30,14 +31,12 @@ template js v = html_
   , body_ [ v ] ]
 
 
-viewRouter :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
-           => Route -> IO (HtmlM m Model)
+viewRouter :: HasZettelHandlers m => Route -> IO (HtmlM m Model)
 viewRouter r = let model = initialModel r emptyZettel
   in view . ($ model) <$> runContinuation (router r) model
 
 
-view :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
-     => Model -> HtmlM m Model
+view :: HasZettelHandlers m => Model -> HtmlM m Model
 view model = viewContainer model . pimap coproductIsoModel . viewCases $ modelToCoproduct model
 
 
@@ -49,21 +48,18 @@ viewContainer model v =
       div [class' "s11k-view"] [ v ] ]
 
 
-viewCases :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
-          => ModelCoproduct -> HtmlM m ModelCoproduct
+viewCases :: HasZettelHandlers m => ModelCoproduct -> HtmlM m ModelCoproduct
 viewCases = initialView `eitherH` threadView `eitherH` loginView
 
 
-initialView :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
-            => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
+initialView :: HasZettelHandlers m => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
 initialView model = div [class' "s11k-view-initial"] [
   reloadWidget,
   addCategoryWidget model,
   categoryList model ]
 
 
-threadView :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
-           => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
+threadView :: HasZettelHandlers m => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
 threadView model@(z, v) =
   let t = viewedThread v
   in div [class' "s11k-view-thread"] $ [
@@ -79,8 +75,7 @@ threadView model@(z, v) =
     div [class' "s11k-comments"] (commentView <$> threadComments z t) ]
 
 
-loginView :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
-          => (Zettel, LoginV) -> HtmlM m (Zettel, LoginV)
+loginView :: HasZettelHandlers m => (Zettel, LoginV) -> HtmlM m (Zettel, LoginV)
 loginView model@(z,l) =
   div [class' "s11k-login form-group"] [
     input' [ class' "form-control", type' "text", placeholder "User ID", onInput (setUserId model) ],
@@ -91,12 +86,11 @@ loginView model@(z,l) =
 -- initialView pieces
 
 
-reloadWidget :: Monad m => ZettelEditor m => HtmlM m (Zettel, InitialV)
+reloadWidget :: HasZettelHandlers m => HtmlM m (Zettel, InitialV)
 reloadWidget = div [ class' "s11k-reload btn btn-link", onClickE reload ] [ "Reload" ]
 
 
-addCategoryWidget :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
-                  => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
+addCategoryWidget :: HasZettelHandlers m => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
 addCategoryWidget model@(_,i) = div [class' "s11k-add-category form-group row"] [
   input [ class' "form-control col-sm-9", ("type", "text"), onSubmitE handleNewCategory
         , onInput (setNewCategoryTitle model)
@@ -104,22 +98,19 @@ addCategoryWidget model@(_,i) = div [class' "s11k-add-category form-group row"] 
   button [ class' "form-control col btn btn-primary", onClickE handleNewCategory ] [ text "New Category" ] ]
 
 
-categoryList :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
-             => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
+categoryList :: HasZettelHandlers m => (Zettel, InitialV) -> HtmlM m (Zettel, InitialV)
 categoryList model = div [class' "s11k-category-list"]
                      $ categorySummary model <$> M.elems (categories (fst model))
 
 
-categorySummary :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
-                => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
+categorySummary :: HasZettelHandlers m => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
 categorySummary model cat = div [class' "s11k-category-summary mb-3"] [
   h2 [class' "s11k-category-title"] [ text (categoryTitle cat) ],
   addThreadWidget model cat,
   div [class' "s11k-thread-summaries row"] (threadSummary model <$> categoryThreads (fst model) cat) ]
 
 
-addThreadWidget :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
-                => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
+addThreadWidget :: HasZettelHandlers m => (Zettel, InitialV) -> Category -> HtmlM m (Zettel, InitialV)
 addThreadWidget model cat = div [class' "s11k-add-thread row form-group"] [
   input [ class' "form-control col-sm-9", ("type", "text"), onSubmitE (handleNewThread cat)
         , onInput (setNewThreadTitle model cat)
@@ -127,7 +118,7 @@ addThreadWidget model cat = div [class' "s11k-add-thread row form-group"] [
   button [ class' "form-control col-sm-3 btn btn-primary", onClickE (handleNewThread cat) ] [ text "New Thread" ] ]
 
 
-threadSummary :: MonadJSM m => (Zettel, InitialV) -> Thread -> HtmlM m (Zettel, InitialV)
+threadSummary :: HasZettelHandlers m => (Zettel, InitialV) -> Thread -> HtmlM m (Zettel, InitialV)
 threadSummary _ t = div [ class' "s11k-thread-summary col-sm-4 col-md-3 col-lg-2 mb-2"
                         , onClickM_ $ navigate @SPA (ThreadRoute (threadId t)) ]
                         [ text (threadTitle t) ]
@@ -141,8 +132,7 @@ backToInitial = div [ class' "s11k-back btn btn-link"
                     , onClickM_ (navigate @SPA InitialRoute) ] [ text "Back" ]
 
 
-addCommentWidget :: MonadJSM m => MonadUnliftIO m => ZettelEditor m
-                 => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
+addCommentWidget :: HasZettelHandlers m => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
 addCommentWidget model@(_,v) = div [class' "s11k-add-comment form-group"] [
   textarea' [ class' "form-control", ("rows", "4"), ("cols", "70"), onSubmitE handleNewComment
             , onInput (setCommentField model), ("value", textProp (commentField v)) ],
