@@ -67,7 +67,7 @@ newtype CommentId = CommentId { unCommentId :: U.UUID }
 
 
 newtype UserId = UserId { unUserId :: Text }
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Read, Show)
 
 
 newtype SessionId = SessionId { unSessionId :: U.UUID }
