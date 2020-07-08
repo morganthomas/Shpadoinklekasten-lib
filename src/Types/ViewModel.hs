@@ -57,6 +57,7 @@ import           Types.Model
 
 
 data InitialV = InitialV { newCategoryTitle :: Text
+                         , newRelationLabelField :: RelationLabel
                          , retitleCategoryField :: Maybe (CategoryId, Text)
                          , newThreadTitles :: M.Map CategoryId Text }
   deriving (Eq, Show)
@@ -102,7 +103,7 @@ coproductIsoViewModel = piiso coproductToViewModel viewModelToCoproduct
 
 
 initialViewModel :: Zettel -> InitialV
-initialViewModel z = InitialV "" Nothing (M.fromList $ (,"") <$> M.keys (categories z))
+initialViewModel z = InitialV "" emptyLabel Nothing (M.fromList $ (,"") <$> M.keys (categories z))
 
 
 initialModel :: Route -> Zettel -> ViewModel

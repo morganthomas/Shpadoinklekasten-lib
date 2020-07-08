@@ -130,7 +130,9 @@ class MonadJSM m => ZettelController m where
   handleMoveCommentDown :: CommentId -> Continuation m (Zettel, ThreadV)
   handleMoveThreadUp :: CategoryId -> ThreadId -> Continuation m (Zettel, InitialV)
   handleMoveThreadDown :: CategoryId -> ThreadId -> Continuation m (Zettel, InitialV)
-  -- TODO: add and delete relation label will need viewmodel additions
+  handleAddRelationLabel :: Continuation m (Zettel, InitialV)
+  handleDeleteRelationLabel :: RelationLabel -> Continuation m (Zettel, InitialV)
+  -- TODO: add and delete relation will need viewmodel additions
 
 
 type SPA = "app" :> Raw
@@ -145,7 +147,7 @@ routes = InitialRoute :<|> ThreadRoute :<|> LoginRoute
 router :: Monad m => Route -> Continuation m ViewModel
 router InitialRoute = pur $
   \(z, _) -> case session z of
-    Just _  -> (z, InitialView (InitialV "" Nothing (M.fromList ((,"") <$> M.keys (categories z)))))
+    Just _  -> (z, InitialView (InitialV "" emptyLabel Nothing (M.fromList ((,"") <$> M.keys (categories z)))))
     Nothing -> (z, LoginView (LoginV "" ""))
 router (ThreadRoute tid) = pur $
   (\(z, v) -> case (session z, M.lookup tid (threads z)) of
@@ -590,6 +592,12 @@ instance ( Monad m
       s   <- sessionId <$> session z
       return (((cid, tid), i), s)
 
+  handleAddRelationLabel = Continuation . (id,) $ \(z,v) -> return . voidRunContinuationT $ do
+    commit . pur . second $ \v' -> v' { newRelationLabelField = emptyLabel }
+    maybe (return ()) (newRelationLabel (newRelationLabelField v)) (sessionId <$> session z)
+
+  handleDeleteRelationLabel l = Continuation . (id,) $ \(z, _) -> return . voidRunContinuationT $
+    maybe (return ()) (deleteRelationLabel l) (sessionId <$> session z)
 
 
 instance Semigroup Change where

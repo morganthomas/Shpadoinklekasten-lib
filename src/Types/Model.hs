@@ -176,6 +176,10 @@ whoAmI :: Zettel -> Maybe UserId
 whoAmI = fmap sessionUser . session
 
 
+emptyLabel :: RelationLabel
+emptyLabel = asymmetricLabel "" ""
+
+
 symmetricLabel :: Text -> RelationLabel
 symmetricLabel = SymmL . SymmL'
 
