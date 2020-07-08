@@ -110,6 +110,21 @@ class MonadJSM m => ZettelController m where
   handleOpenEdit :: CommentId -> Continuation m (Zettel, ThreadV)
   handleCancelEdit :: Continuation m (Zettel, ThreadV)
   handleSaveEdit :: Continuation m (Zettel, ThreadV)
+  handleAddThreadToCategory :: CategoryId -> Continuation m (Zettel, ThreadV)
+  handleRemoveThreadFromCategory :: CategoryId -> Continuation m (Zettel, ThreadV)
+  -- TODO retitling categories and threads will need viewmodel additions
+  handleRemoveComment :: CommentId -> Continuation m (Zettel, ThreadV)
+  handleTrashCategory :: CategoryId -> Continuation m (Zettel, InitialV)
+  -- TODO untrash categories will need viewmodel additions for viewing category trash
+  handleSplitThread :: CommentId -> Continuation m (Zettel, ThreadV)
+  -- TODO add comment or range to thread will need viewmodel addition
+  handleMoveCategoryUp :: CategoryId -> Continuation m (Zettel, InitialV)
+  handleMoveCategoryDown :: CategoryId -> Continuation m (Zettel, InitialV)
+  handleMoveCommentUp :: CommentId -> Continuation m (Zettel, ThreadV)
+  handleMoveCommentDown :: CommentId -> Continuation m (Zettel, ThreadV)
+  handleMoveThreadUp :: CategoryId -> ThreadId -> Continuation m (Zettel, InitialV)
+  handleMoveThreadDown :: CategoryId -> ThreadId -> Continuation m (Zettel, InitialV)
+  -- TODO: add and delete relation label will need viewmodel additions
 
 
 type SPA = "app" :> Raw
@@ -482,6 +497,71 @@ instance ( Monad m
         newEdit c txt (sessionId s)
         commit . pur . second $ \v -> v { editCommentField = Nothing }
       _ -> return ()
+
+  handleAddThreadToCategory cid = Continuation . (id,) $ \(z, ThreadV t _ _) -> return . voidRunContinuationT $
+    maybe (return ()) (addThreadToCategory cid (threadId t)) (sessionId <$> session z)
+
+  handleRemoveThreadFromCategory cid = Continuation . (id,) $ \(z, ThreadV t _ _) -> return . voidRunContinuationT $
+    maybe (return ()) (removeThreadFromCategory cid (threadId t)) (sessionId <$> session z)
+
+  handleRemoveComment cid = Continuation . (id,) $ \(z, ThreadV t _ _ ) -> return . voidRunContinuationT $
+    case session z of
+      Just s -> do
+        newId <- ThreadId <$> lift (liftIO randomIO)
+        removeComment (threadId t) newId cid (sessionId s)
+        commit . pur . second $ \v -> v { viewedThread = t { threadId = newId } }
+
+  handleTrashCategory cid = Continuation . (id,) $ \(z, _) -> return . voidRunContinuationT $
+    maybe (return ()) (trashCategory cid) (sessionId <$> session z)
+
+  handleSplitThread cid = Continuation . (id,) $ \(z, ThreadV t _ _) -> return . voidRunContinuationT $
+    case session z of
+      Just s -> do
+        newIdA <- ThreadId <$> lift (liftIO randomIO)
+        newIdB <- ThreadId <$> lift (liftIO randomIO)
+        splitThread (threadId t) newIdA newIdB cid (sessionId s)
+      Nothing -> return ()
+
+  handleMoveCategoryUp cid = Continuation . (id,) $ \(z, _) -> return . voidRunContinuationT $
+    maybe (return ()) (uncurry (uncurry moveCategory)) $ do
+      i <- findIndex (== cid) (categoryOrdering z)
+      s <- sessionId <$> session z
+      return ((cid, i-1), s)
+
+  handleMoveCategoryDown cid = Continuation . (id,) $ \(z, _) -> return . voidRunContinuationT $
+    maybe (return ()) (uncurry (uncurry moveCategory)) $ do
+      i <- findIndex (== cid) (categoryOrdering z)
+      s <- sessionId <$> session z
+      return ((cid, i+1), s)
+
+  handleMoveCommentUp cid = Continuation . (id,) $ \(z, ThreadV t _ _) -> return . voidRunContinuationT $
+    maybe (return ()) (uncurry (uncurry (uncurry moveComment))) $ do
+      t <- M.lookup (threadId t) (threads z)
+      i <- findIndex (== cid) (threadCommentIds t)
+      s <- sessionId <$> session z
+      return (((threadId t, cid), i-1), s)
+
+  handleMoveCommentDown cid = Continuation . (id,) $ \(z, ThreadV t _ _) -> return . voidRunContinuationT $
+    maybe (return ()) (uncurry (uncurry (uncurry moveComment))) $ do
+      t <- M.lookup (threadId t) (threads z)
+      i <- findIndex (== cid) (threadCommentIds t)
+      s <- sessionId <$> session z
+      return (((threadId t, cid), i+1), s)
+
+  handleMoveThreadUp cid tid = Continuation . (id,) $ \(z, _) -> return . voidRunContinuationT $
+    maybe (return ()) (uncurry (uncurry (uncurry moveThread))) $ do
+      cat <- M.lookup cid (categories z)
+      i   <- findIndex (== tid) (categoryThreadIds cat)
+      s   <- sessionId <$> session z
+      return (((cid, tid), i), s)
+
+  handleMoveThreadDown cid tid = Continuation . (id,) $ \(z, _) -> return . voidRunContinuationT $
+    maybe (return ()) (uncurry (uncurry (uncurry moveThread))) $ do
+      cat <- M.lookup cid (categories z)
+      i   <- findIndex (== tid) (categoryThreadIds cat)
+      s   <- sessionId <$> session z
+      return (((cid, tid), i), s)
+
 
 
 instance Semigroup Change where
