@@ -57,13 +57,15 @@ import           Types.Model
 
 
 data InitialV = InitialV { newCategoryTitle :: Text
+                         , retitleCategoryField :: Maybe (CategoryId, Text)
                          , newThreadTitles :: M.Map CategoryId Text }
   deriving (Eq, Show)
 
 
 data ThreadV = ThreadV { viewedThread :: Thread
                        , commentField :: Text
-                       , editCommentField :: Maybe (CommentId, Text) }
+                       , editCommentField :: Maybe (CommentId, Text)
+                       , retitleThreadField :: Maybe Text }
   deriving (Eq, Show)
 
 
@@ -100,13 +102,13 @@ coproductIsoViewModel = piiso coproductToViewModel viewModelToCoproduct
 
 
 initialViewModel :: Zettel -> InitialV
-initialViewModel z = InitialV "" (M.fromList $ (,"") <$> M.keys (categories z))
+initialViewModel z = InitialV "" Nothing (M.fromList $ (,"") <$> M.keys (categories z))
 
 
 initialModel :: Route -> Zettel -> ViewModel
 initialModel InitialRoute z = (z, InitialView (initialViewModel z))
 initialModel (ThreadRoute tid) z = case M.lookup tid (threads z) of
-  Just t  -> (z, ThreadView (ThreadV t "" Nothing))
+  Just t  -> (z, ThreadView (ThreadV t "" Nothing Nothing))
   Nothing -> (z, InitialView (initialViewModel z))
 initialModel LoginRoute z = (z, LoginView (LoginV "" ""))
 
