@@ -72,6 +72,7 @@ data Change = NewCategory CategoryId Text
             | AddCommentToThread ThreadId CommentId
             | AddCommentRangeToThread ThreadId CommentId CommentId ThreadId
             --                        from     start     end       to       (add at end)
+            | MoveCategory CategoryId Int -- index to move it to
             | MoveComment ThreadId CommentId Int -- index to move it to
             | MoveThread CategoryId ThreadId Int -- index to move it to
             | NewRelationLabel RelationLabel
@@ -88,10 +89,16 @@ class ZettelEditor m where
   login :: UserId -> PasswordHash -> m (Maybe Session)
 
 
-type API =      "api" :> ReqBody' '[Required] '[JSON] Change :> Header' '[Required] "session" SessionId :> Post '[JSON] ()
-           :<|> "api" :> Header' '[Required] "session" SessionId :> Get '[JSON] Zettel
-           :<|> "api" :> "login" :> Capture "id" UserId :> ReqBody' '[Required] '[OctetStream] PasswordHash
-                 :> Post '[JSON] (Maybe Session)
+type API =      "api" :> ReqBody' '[Required] '[JSON] Change
+                      :> Header' '[Required] "session" SessionId
+                      :> Post '[JSON] ()
+
+           :<|> "api" :> Header' '[Required] "session" SessionId
+                      :> Get '[JSON] Zettel
+
+           :<|> "api" :> "login" :> Capture "id" UserId
+                      :> ReqBody' '[Required] '[OctetStream] PasswordHash
+                      :> Post '[JSON] (Maybe Session)
 
 
 class MonadJSM m => ZettelController m where
@@ -100,11 +107,14 @@ class MonadJSM m => ZettelController m where
   handleNewCategory :: Continuation m (Zettel, InitialV)
   handleNewThread :: Category -> Continuation m (Zettel, InitialV)
   handleNewComment :: Continuation m (Zettel, ThreadV)
+  handleOpenEdit :: CommentId -> Continuation m (Zettel, ThreadV)
+  handleCancelEdit :: Continuation m (Zettel, ThreadV)
+  handleSaveEdit :: Continuation m (Zettel, ThreadV)
 
 
 type SPA = "app" :> Raw
-           :<|> "app" :> "thread" :> Capture "id" ThreadId :> Raw
-           :<|> "app" :> "login" :> Raw
+      :<|> "app" :> "thread" :> Capture "id" ThreadId :> Raw
+      :<|> "app" :> "login" :> Raw
 
 
 routes :: SPA :>> Route
@@ -118,7 +128,7 @@ router InitialRoute = pur $
     Nothing -> (z, LoginView (LoginV "" ""))
 router (ThreadRoute tid) = pur $
   (\(z, v) -> case (session z, M.lookup tid (threads z)) of
-                (Just _, Just t) -> (z, ThreadView (ThreadV t ""))
+                (Just _, Just t) -> (z, ThreadView (ThreadV t "" Nothing))
                 (Nothing, _) -> (z, LoginView (LoginV "" ""))
                 _ -> (z, v))
 router LoginRoute = pur $ \(z, _) -> (z, LoginView (LoginV "" ""))
@@ -164,6 +174,9 @@ invertChange z (AddCommentRangeToThread f s e t) =
     do thread <- maybeToList (M.lookup f (threads z))
        c <- takeWhile (not . (== e)) . dropWhile (not . (== s)) $ threadCommentIds thread
        [RemoveComment t t' c]
+invertChange z (MoveCategory c j) = ComposedChanges $
+  do i <- maybeToList . findIndex (== c) $ categoryOrdering z
+     return $ MoveCategory c i
 invertChange z (MoveComment t c _) = ComposedChanges $
   do thread <- maybeToList (M.lookup t (threads z))
      i <- maybeToList . findIndex (== c) $ threadCommentIds thread
@@ -287,6 +300,9 @@ applyChange _ _ (AddCommentRangeToThread it is ie iu) z = fromMaybe z $ do
   return $ z { threads = M.insert iu u { threadCommentIds = threadCommentIds u ++ cs } (threads z) }
   where takeUntil p []     = []
         takeUntil p (x:xs) = if p x then [x] else x : takeUntil p xs
+applyChange _ _ (MoveCategory c i) z = fromMaybe z $ do
+  _ <- M.lookup c (categories z)
+  return $ z { categoryOrdering = categoryOrdering z & filter (/= c) & insertAt i c }
 applyChange _ _ (MoveComment it ic i) z = fromMaybe z $ do
   t <- M.lookup it (threads z)
   let cs = threadCommentIds t & filter (/= ic) & insertAt i ic
@@ -363,6 +379,11 @@ addCommentToThread t c = saveChange (AddCommentToThread t c)
 addCommentRangeToThread :: ZettelEditor m => ThreadId -> CommentId -> CommentId -> ThreadId -> SessionId -> m ()
 addCommentRangeToThread f s e t = saveChange (AddCommentRangeToThread f s e t)
 
+
+moveCategory :: ZettelEditor m => CategoryId -> Int -> SessionId -> m ()
+moveCategory c i = saveChange (MoveCategory c i)
+
+
 moveComment :: ZettelEditor m => ThreadId -> CommentId -> Int -> SessionId -> m ()
 moveComment t c i = saveChange (MoveComment t c i)
 
@@ -438,16 +459,29 @@ instance ( Monad m
     newId <- CategoryId <$> liftIO randomIO
     return $ maybe (pur id) (voidRunContinuationT . newCategory newId (newCategoryTitle i)) (sessionId <$> session z)
   
-  handleNewThread cat = Continuation . (id,) $ \(z,i) ->
+  handleNewThread cat = Continuation . (id,) $ \(z,i) -> return . voidRunContinuationT $
     case (M.lookup (categoryId cat) (newThreadTitles i), session z) of
       (Just t, Just s) -> do
-        newId <- ThreadId <$> liftIO randomIO
-        return $ maybe (pur id) (voidRunContinuationT . newThread (categoryId cat) newId t) (sessionId <$> session z)
-      _ -> return (pur id)
+        newId <- ThreadId <$> lift (liftIO randomIO)
+        commit . pur . second $ \v -> v { newThreadTitles = newThreadTitles v & M.insert (categoryId cat) "" }
+        newThread (categoryId cat) newId t (sessionId s)
+      _ -> return ()
   
-  handleNewComment = Continuation . (id,) $ \(z, ThreadV t txt) -> do
-    newId <- CommentId <$> liftIO randomIO
-    return $ maybe (pur id) (voidRunContinuationT . newComment (threadId t) newId txt) (sessionId <$> session z)
+  handleNewComment = Continuation . (id,) $ \(z, ThreadV t txt _) -> return . voidRunContinuationT $ do
+    newId <- CommentId <$> lift (liftIO randomIO)
+    commit . pur . second $ \v -> v { commentField = "" }
+    maybe (return ()) (newComment (threadId t) newId txt) (sessionId <$> session z)
+
+  handleOpenEdit c = pur (second (\v -> v { editCommentField = Just (c, "") } ) )
+
+  handleCancelEdit = pur (second (\v -> v { editCommentField = Nothing } ) )
+
+  handleSaveEdit = Continuation . (id,) $ \(z, ThreadV t _ f) -> return . voidRunContinuationT $
+    case (f, session z, M.lookup (threadId t) (threads z)) of
+      (Just (c, txt), Just s, Just ts) -> do
+        newEdit c txt (sessionId s)
+        commit . pur . second $ \v -> v { editCommentField = Nothing }
+      _ -> return ()
 
 
 instance Semigroup Change where
@@ -465,7 +499,7 @@ instance FromJSON Change where
     <|> parseRetitleCategory o <|> parseRetitleThread o <|> parseRemoveComment o
     <|> parseTrashCategory o <|> parseUntrashCategory o <|> parseSplitThread o
     <|> parseAddCommentToThread o <|> parseAddCommentRangeToThread o
-    <|> parseMoveComment o <|> parseMoveThread o <|> parseNewRelationLabel o
+    <|> parseMoveCategory o <|> parseMoveComment o <|> parseMoveThread o <|> parseNewRelationLabel o
     <|> parseDeleteRelationLabel o <|> parseNewRelation o <|> parseDeleteRelation o) x
     <|> (ComposedChanges <$> parseJSON x)
 
@@ -547,6 +581,12 @@ instance FromJSON Change where
         j <- o .: "toThreadId"
         return (AddCommentRangeToThread i f t j)
 
+
+      parseMoveCategory o = do
+        c <- o .: "moveCategoryId"
+        i <- o .: "toIndex"
+        return (MoveCategory c i)
+
       parseMoveComment o = do
         t <- o .: "inThreadId"
         c <- o .: "moveCommentId"
@@ -597,6 +637,7 @@ instance ToJSON Change where
                                                     , "addFromCommentId" .= f
                                                     , "toCommentId" .= t
                                                     , "toThreadId" .= j ]
+  toJSON (MoveCategory c i) = object [ "moveCategoryId" .= c, "toIndex" .= i ]
   toJSON (MoveComment t c i) = object [ "inThreadId" .= t
                                       , "moveCommentId" .= c
                                       , "toIndex" .= i ]
@@ -693,7 +734,7 @@ instance ( ZettelEditor m
 instance ( ZettelEditor m
          , MonadUnliftIO m
          , MonadJSM m
-         )  => ZettelEditor (ContinuationT ThreadV m) where
+         ) => ZettelEditor (ContinuationT ThreadV m) where
   saveChange (NewComment _ _ _) _ = ContinuationT . return $
     ((), pur (\v -> v { commentField = "" }))
   saveChange _ _ = return ()

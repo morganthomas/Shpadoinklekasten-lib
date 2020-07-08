@@ -61,7 +61,10 @@ data InitialV = InitialV { newCategoryTitle :: Text
   deriving (Eq, Show)
 
 
-data ThreadV = ThreadV { viewedThread :: Thread, commentField :: Text } deriving (Eq, Show)
+data ThreadV = ThreadV { viewedThread :: Thread
+                       , commentField :: Text
+                       , editCommentField :: Maybe (CommentId, Text) }
+  deriving (Eq, Show)
 
 
 data LoginV = LoginV { userIdField :: Text, passwordField :: Text } deriving (Eq, Show)
@@ -103,7 +106,7 @@ initialViewModel z = InitialV "" (M.fromList $ (,"") <$> M.keys (categories z))
 initialModel :: Route -> Zettel -> ViewModel
 initialModel InitialRoute z = (z, InitialView (initialViewModel z))
 initialModel (ThreadRoute tid) z = case M.lookup tid (threads z) of
-  Just t  -> (z, ThreadView (ThreadV t ""))
+  Just t  -> (z, ThreadView (ThreadV t "" Nothing))
   Nothing -> (z, InitialView (initialViewModel z))
 initialModel LoginRoute z = (z, LoginView (LoginV "" ""))
 
@@ -132,5 +135,3 @@ getNewThreadTitle (_, i) cat = fromMaybe "" $ M.lookup (categoryId cat) (newThre
 
 setCommentField :: (Zettel, ThreadV) -> Text -> (Zettel, ThreadV)
 setCommentField (z, v) t = (z, v { commentField = t })
-
-

@@ -157,6 +157,7 @@ data Session = Session
 
 data Zettel = Zettel
   { categories :: M.Map CategoryId Category
+  , categoryOrdering :: [CategoryId]
   , threads :: M.Map ThreadId Thread
   , trashcan :: S.Set ThreadId
   , comments :: M.Map CommentId Comment
@@ -168,7 +169,7 @@ data Zettel = Zettel
 
 
 emptyZettel :: Zettel
-emptyZettel = Zettel mempty mempty mempty mempty mempty mempty mempty Nothing
+emptyZettel = Zettel mempty [] mempty mempty mempty mempty mempty mempty Nothing
 
 
 whoAmI :: Zettel -> Maybe UserId
@@ -569,6 +570,7 @@ mapBy toKey xs = M.fromList $ (\x -> (toKey x, x)) <$> xs
 instance FromJSON Zettel where
   parseJSON = withObject "Zettel" $ \o -> do
     cs <- o .: "categories"
+    co <- o .: "categoryOrdering"
     ts <- o .: "threads"
     tc <- o .: "trashcan"
     xs <- o .: "comments"
@@ -578,6 +580,7 @@ instance FromJSON Zettel where
     s  <- o .: "session"
     return $ Zettel
       { categories = mapBy categoryId cs
+      , categoryOrdering = co
       , threads = mapBy threadId ts
       , trashcan = S.fromList tc
       , comments = mapBy commentId xs
@@ -590,6 +593,7 @@ instance FromJSON Zettel where
 instance ToJSON Zettel where
   toJSON z = object
              [ "categories" .= M.elems (categories z)
+             , "categoryOrdering" .= categoryOrdering z
              , "threads" .= M.elems (threads z)
              , "trashcan" .= S.toList (trashcan z)
              , "comments" .= M.elems (comments z)
