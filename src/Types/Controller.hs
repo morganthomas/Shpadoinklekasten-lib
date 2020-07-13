@@ -470,6 +470,7 @@ instance ( Monad m
           z'' <- lift . getDatabase $ sessionId s
           commit . pur . first $ const z''
           lift $ navigate @SPA InitialRoute
+      Nothing -> return () -- TODO: show message saying login failed
   
   reload = kleisli $ \(z,_) ->
     case session z of
