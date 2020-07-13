@@ -460,7 +460,7 @@ instance ( Monad m
   handleLogin = kleisliT $ \(z, LoginV u p) -> do
     h   <- lift (liftJSM (hash p))
     commit . pur . second . const $ LoginV "" ""
-    res <- lift (login (UserId u) h)
+    res <- lift $ login (UserId u) h
     case res of
       Just s -> do
         commit . pur . first $ \z' -> z' { session = Just s }
@@ -475,7 +475,7 @@ instance ( Monad m
     case session z of
       Just s -> do
         z' <- getDatabase (sessionId s)
-        return . pur . const $ (z', initialViewModel z')
+        return . pur $ const (z', initialViewModel z')
       Nothing -> return (pur id)
   
   handleNewCategory = kleisli $ \(z,i) -> do
@@ -528,7 +528,7 @@ instance ( Monad m
     maybe (return ()) (uncurry (uncurry (uncurry retitleCategory))) $ do
       (cid, txt) <- retitleCategoryField v
       s          <- sessionId <$> session z
-      return $ (((cid, newId), txt), s)
+      return (((cid, newId), txt), s)
 
   handleOpenRetitleThread = pur . second $ \v -> v { retitleThreadField = Just "" }
 
@@ -539,7 +539,7 @@ instance ( Monad m
     maybe (return ()) (uncurry (uncurry (uncurry retitleThread))) $ do
       txt <- retitleThreadField v
       s   <- sessionId <$> session z
-      return $ (((threadId (viewedThread v), newId), txt), s)
+      return (((threadId (viewedThread v), newId), txt), s)
 
   handleTrashCategory cid = kleisliT $ \(z, _) ->
     maybe (return ()) (trashCategory cid) (sessionId <$> session z)
