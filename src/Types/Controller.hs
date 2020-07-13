@@ -457,19 +457,19 @@ instance ( Monad m
          , MonadUnliftIO m
          , ZettelEditor m
          ) => ZettelController m where
-  handleLogin = kleisli $ \(z, LoginV u p) -> do
-    h   <- liftJSM (hash p)
-    return . Continuation . (second (const (LoginV "" "")),) $ \_ -> do
-      res <- login (UserId u) h
-      case res of
-        Just s ->
-          return . Continuation . (first (\z' -> z' { session = Just s }),)
-          $ \(z',v) -> do setStorage "session" (sessionId s)
-                          navigate @SPA InitialRoute
-                          z'' <- getDatabase (sessionId s)
-                          return . Continuation . (first (const z''),)
-                            . const . return . causes $ navigate @SPA InitialRoute
-        Nothing -> return (pur id)
+  handleLogin = kleisliT $ \(z, LoginV u p) -> do
+    h   <- lift (liftJSM (hash p))
+    commit . pur . second . const $ LoginV "" ""
+    res <- lift (login (UserId u) h)
+    case res of
+      Just s -> do
+        commit . pur . first $ \z' -> z' { session = Just s }
+        commit . kleisliT $ \(z',v) -> do
+          lift $ setStorage "session" (sessionId s)
+          lift $ navigate @SPA InitialRoute
+          z'' <- lift . getDatabase $ sessionId s
+          commit . pur . first $ const z''
+          lift $ navigate @SPA InitialRoute
   
   reload = kleisli $ \(z,_) ->
     case session z of
