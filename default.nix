@@ -21,7 +21,7 @@ let
 
   Shpadoinkle-continuations-src = builtins.fetchGit {
     url = https://github.com/morganthomas/Shpadoinkle-continuations.git;
-    rev = "91bffa19cf27424019ea90eb8f873a7e4ee0d401";
+    rev = "38055fc348b31be6c4b466513463d9d57d613e60";
     ref = "master";
   };
 

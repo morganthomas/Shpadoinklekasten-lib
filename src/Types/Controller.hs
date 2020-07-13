@@ -457,7 +457,7 @@ instance ( Monad m
          , MonadUnliftIO m
          , ZettelEditor m
          ) => ZettelController m where
-  handleLogin = Continuation . (id,) $ \(z, LoginV u p) -> do
+  handleLogin = kleisli $ \(z, LoginV u p) -> do
     h   <- liftJSM (hash p)
     return . Continuation . (second (const (LoginV "" "")),) $ \_ -> do
       res <- login (UserId u) h
@@ -471,18 +471,18 @@ instance ( Monad m
                             . const . return . causes $ navigate @SPA InitialRoute
         Nothing -> return (pur id)
   
-  reload = Continuation . (id,) $ \(z,_) ->
+  reload = kleisli $ \(z,_) ->
     case session z of
       Just s -> do
         z' <- getDatabase (sessionId s)
         return . pur . const $ (z', initialViewModel z')
       Nothing -> return (pur id)
   
-  handleNewCategory = Continuation . (id,) $ \(z,i) -> do
+  handleNewCategory = kleisli $ \(z,i) -> do
     newId <- CategoryId <$> liftIO randomIO
     return $ maybe (pur id) (voidRunContinuationT . newCategory newId (newCategoryTitle i)) (sessionId <$> session z)
   
-  handleNewThread cat = Continuation . (id,) $ \(z,i) -> return . voidRunContinuationT $
+  handleNewThread cat = kleisliT $ \(z,i) ->
     case (M.lookup (categoryId cat) (newThreadTitles i), session z) of
       (Just t, Just s) -> do
         newId <- ThreadId <$> lift (liftIO randomIO)
@@ -490,7 +490,7 @@ instance ( Monad m
         newThread (categoryId cat) newId t (sessionId s)
       _ -> return ()
   
-  handleNewComment = Continuation . (id,) $ \(z, ThreadV t txt _ _) -> return . voidRunContinuationT $ do
+  handleNewComment = kleisliT $ \(z, ThreadV t txt _ _) -> do
     newId <- CommentId <$> lift (liftIO randomIO)
     commit . pur . second $ \v -> v { commentField = "" }
     maybe (return ()) (newComment (threadId t) newId txt) (sessionId <$> session z)
@@ -499,20 +499,20 @@ instance ( Monad m
 
   handleCancelEdit = pur (second (\v -> v { editCommentField = Nothing } ) )
 
-  handleSaveEdit = Continuation . (id,) $ \(z, ThreadV t _ f _) -> return . voidRunContinuationT $
+  handleSaveEdit = kleisliT $ \(z, ThreadV t _ f _) ->
     case (f, session z, M.lookup (threadId t) (threads z)) of
       (Just (c, txt), Just s, Just ts) -> do
         newEdit c txt (sessionId s)
         commit . pur . second $ \v -> v { editCommentField = Nothing }
       _ -> return ()
 
-  handleAddThreadToCategory cid = Continuation . (id,) $ \(z, ThreadV t _ _ _) -> return . voidRunContinuationT $
+  handleAddThreadToCategory cid = kleisliT $ \(z, ThreadV t _ _ _) ->
     maybe (return ()) (addThreadToCategory cid (threadId t)) (sessionId <$> session z)
 
-  handleRemoveThreadFromCategory cid = Continuation . (id,) $ \(z, ThreadV t _ _ _) -> return . voidRunContinuationT $
+  handleRemoveThreadFromCategory cid = kleisliT $ \(z, ThreadV t _ _ _) ->
     maybe (return ()) (removeThreadFromCategory cid (threadId t)) (sessionId <$> session z)
 
-  handleRemoveComment cid = Continuation . (id,) $ \(z, ThreadV t _ _ _) -> return . voidRunContinuationT $
+  handleRemoveComment cid = kleisliT $ \(z, ThreadV t _ _ _) ->
     case session z of
       Just s -> do
         newId <- ThreadId <$> lift (liftIO randomIO)
@@ -523,7 +523,7 @@ instance ( Monad m
 
   handleCancelRetitleCategory = pur . second $ \v -> v { retitleCategoryField = Nothing }
 
-  handleSaveRetitleCategory = Continuation . (id,) $ \(z, v) -> return . voidRunContinuationT $ do
+  handleSaveRetitleCategory = kleisliT $ \(z, v) -> do
     newId <- CategoryId <$> lift (liftIO randomIO)
     maybe (return ()) (uncurry (uncurry (uncurry retitleCategory))) $ do
       (cid, txt) <- retitleCategoryField v
@@ -534,17 +534,17 @@ instance ( Monad m
 
   handleCancelRetitleThread = pur . second $ \v -> v { retitleThreadField = Nothing }
 
-  handleSaveRetitleThread = Continuation . (id,) $ \(z, v) -> return . voidRunContinuationT $ do
+  handleSaveRetitleThread = kleisliT $ \(z, v) -> do
     newId <- ThreadId <$> lift (liftIO randomIO)
     maybe (return ()) (uncurry (uncurry (uncurry retitleThread))) $ do
       txt <- retitleThreadField v
       s   <- sessionId <$> session z
       return $ (((threadId (viewedThread v), newId), txt), s)
 
-  handleTrashCategory cid = Continuation . (id,) $ \(z, _) -> return . voidRunContinuationT $
+  handleTrashCategory cid = kleisliT $ \(z, _) ->
     maybe (return ()) (trashCategory cid) (sessionId <$> session z)
 
-  handleSplitThread cid = Continuation . (id,) $ \(z, ThreadV t _ _ _) -> return . voidRunContinuationT $
+  handleSplitThread cid = kleisliT $ \(z, ThreadV t _ _ _) ->
     case session z of
       Just s -> do
         newIdA <- ThreadId <$> lift (liftIO randomIO)
@@ -552,51 +552,51 @@ instance ( Monad m
         splitThread (threadId t) newIdA newIdB cid (sessionId s)
       Nothing -> return ()
 
-  handleMoveCategoryUp cid = Continuation . (id,) $ \(z, _) -> return . voidRunContinuationT $
+  handleMoveCategoryUp cid = kleisliT $ \(z, _) ->
     maybe (return ()) (uncurry (uncurry moveCategory)) $ do
       i <- findIndex (== cid) (categoryOrdering z)
       s <- sessionId <$> session z
       return ((cid, i-1), s)
 
-  handleMoveCategoryDown cid = Continuation . (id,) $ \(z, _) -> return . voidRunContinuationT $
+  handleMoveCategoryDown cid = kleisliT $ \(z, _) ->
     maybe (return ()) (uncurry (uncurry moveCategory)) $ do
       i <- findIndex (== cid) (categoryOrdering z)
       s <- sessionId <$> session z
       return ((cid, i+1), s)
 
-  handleMoveCommentUp cid = Continuation . (id,) $ \(z, ThreadV t _ _ _) -> return . voidRunContinuationT $
+  handleMoveCommentUp cid = kleisliT $ \(z, ThreadV t _ _ _) ->
     maybe (return ()) (uncurry (uncurry (uncurry moveComment))) $ do
       t <- M.lookup (threadId t) (threads z)
       i <- findIndex (== cid) (threadCommentIds t)
       s <- sessionId <$> session z
       return (((threadId t, cid), i-1), s)
 
-  handleMoveCommentDown cid = Continuation . (id,) $ \(z, ThreadV t _ _ _) -> return . voidRunContinuationT $
+  handleMoveCommentDown cid = kleisliT $ \(z, ThreadV t _ _ _) ->
     maybe (return ()) (uncurry (uncurry (uncurry moveComment))) $ do
       t <- M.lookup (threadId t) (threads z)
       i <- findIndex (== cid) (threadCommentIds t)
       s <- sessionId <$> session z
       return (((threadId t, cid), i+1), s)
 
-  handleMoveThreadUp cid tid = Continuation . (id,) $ \(z, _) -> return . voidRunContinuationT $
+  handleMoveThreadUp cid tid = kleisliT $ \(z, _) ->
     maybe (return ()) (uncurry (uncurry (uncurry moveThread))) $ do
       cat <- M.lookup cid (categories z)
       i   <- findIndex (== tid) (categoryThreadIds cat)
       s   <- sessionId <$> session z
       return (((cid, tid), i), s)
 
-  handleMoveThreadDown cid tid = Continuation . (id,) $ \(z, _) -> return . voidRunContinuationT $
+  handleMoveThreadDown cid tid = kleisliT $ \(z, _) ->
     maybe (return ()) (uncurry (uncurry (uncurry moveThread))) $ do
       cat <- M.lookup cid (categories z)
       i   <- findIndex (== tid) (categoryThreadIds cat)
       s   <- sessionId <$> session z
       return (((cid, tid), i), s)
 
-  handleAddRelationLabel = Continuation . (id,) $ \(z,v) -> return . voidRunContinuationT $ do
+  handleAddRelationLabel = kleisliT $ \(z,v) -> do
     commit . pur . second $ \v' -> v' { newRelationLabelField = emptyLabel }
     maybe (return ()) (newRelationLabel (newRelationLabelField v)) (sessionId <$> session z)
 
-  handleDeleteRelationLabel l = Continuation . (id,) $ \(z, _) -> return . voidRunContinuationT $
+  handleDeleteRelationLabel l = kleisliT $ \(z, _) ->
     maybe (return ()) (deleteRelationLabel l) (sessionId <$> session z)
 
 
