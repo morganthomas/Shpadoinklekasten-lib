@@ -158,26 +158,34 @@ router LoginRoute = pur $ \(z, _) -> (z, LoginView (LoginV "" ""))
 
 
 invertChange :: Zettel -> Change -> Change
+
 invertChange _ (NewCategory c _) = TrashCategory c
+
 invertChange z (NewComment t c _) = RemoveComment t (nextThreadId z t) c
+
 invertChange z (NewEdit c x) = ComposedChanges . maybeToList
   $ NewEdit c . commentText <$> M.lookup c (comments z)
+
 invertChange z (AddThreadToCategory c t) = ComposedChanges $
   do _ <- maybeToList $ M.lookup c (categories z)
      _ <- maybeToList $ M.lookup t (threads z)
      [RemoveThreadFromCategory c t]
+
 invertChange z (RemoveThreadFromCategory c t) = ComposedChanges $
   do _ <- maybeToList $ M.lookup c (categories z)
      _ <- maybeToList $ M.lookup t (threads z)
      [AddThreadToCategory c t]
+
 invertChange z (RetitleCategory f t x) = ComposedChanges $
   do _ <- maybeToList $ M.lookup f (categories z)
      [TrashCategory t, UntrashCategory f]
+
 invertChange z (RetitleThread f t x) = ComposedChanges $
   do thread <- maybeToList (M.lookup f (threads z))
      c <- categorization thread
      [ RemoveThreadFromCategory c t,
        AddThreadToCategory c f ]
+
 invertChange z (RemoveComment f t c) = ComposedChanges $
   do comment <- maybeToList (M.lookup c (comments z))
      thread <- maybeToList (M.lookup f (threads z))
@@ -185,58 +193,77 @@ invertChange z (RemoveComment f t c) = ComposedChanges $
      cat <- categorization thread
      [ RemoveThreadFromCategory cat t,
        AddThreadToCategory cat f ]
-invertChange _ (TrashCategory c) = UntrashCategory c
+
+invertChange _ (TrashCategory c) = UntrashCategory c -- TODO: return to original position in category ordering
+
 invertChange _ (UntrashCategory c) = TrashCategory c
+
 invertChange z (SplitThread t f s c) = ComposedChanges $
   do thread <- maybeToList (M.lookup t (threads z))
      c <- categorization thread
      [RemoveThreadFromCategory c f, RemoveThreadFromCategory c s, AddThreadToCategory c t]
+
 invertChange z (AddCommentToThread t c) = RemoveComment t (nextThreadId z t) c
+
 invertChange z (AddCommentRangeToThread f s e t) =
   let t' = nextThreadId z t in ComposedChanges $
     do thread <- maybeToList (M.lookup f (threads z))
        c <- takeWhile (not . (== e)) . dropWhile (not . (== s)) $ threadCommentIds thread
        [RemoveComment t t' c]
+
 invertChange z (MoveCategory c j) = ComposedChanges $
   do i <- maybeToList . findIndex (== c) $ categoryOrdering z
      return $ MoveCategory c i
+
 invertChange z (MoveComment t c _) = ComposedChanges $
   do thread <- maybeToList (M.lookup t (threads z))
      i <- maybeToList . findIndex (== c) $ threadCommentIds thread
      return $ MoveComment t c i
+
 invertChange z (MoveThread c t _) = ComposedChanges $
   do cat <- maybeToList (M.lookup c (categories z))
      i <- maybeToList . findIndex (== t) $ categoryThreadIds cat
      return $ MoveThread c t i
+
 invertChange _ (NewRelationLabel l) = DeleteRelationLabel l
+
 invertChange _ (DeleteRelationLabel l) = NewRelationLabel l
+
 invertChange _ (NewRelation r) = DeleteRelation r
+
 invertChange z (ComposedChanges cs) = ComposedChanges $ invertChange z <$> Prelude.reverse cs
 
 
 applyChange :: UserId -> Day -> Change -> Zettel -> Zettel
+
 applyChange _ _ (NewCategory i t) z = fromMaybe z $ do
   guard . isNothing $ M.lookup i (categories z)
-  return $ z { categories = M.insert i (Category t i [] Nothing False) (categories z) }
+  return $ z { categories = M.insert i (Category t i [] Nothing False) (categories z)
+             , categoryOrdering = i : categoryOrdering z }
+
 applyChange u d (NewThread ic it t) z = fromMaybe z $ do
   _ <- M.lookup ic (categories z)
   guard . isNothing $ M.lookup it (threads z)
   return $ z { threads = M.insert it (Thread it t u d [] [ic] Nothing) (threads z) }
+
 applyChange u d (NewComment it ic t) z = fromMaybe z $ do
   guard . isNothing $ M.lookup ic (comments z)
   th <- M.lookup it (threads z)
   return $ z { comments = M.insert ic (Comment ic u d [Edit d t]) (comments z)
              , threads = M.insert it th { threadCommentIds = threadCommentIds th ++ [ic] } (threads z) }
+
 applyChange u d (NewEdit i t) z = fromMaybe z $ do
   c <- M.lookup i (comments z)
   guard (u == commentAuthor c)
   return $ z { comments = M.insert i (c { commentEdits = (Edit d t) : commentEdits c }) (comments z) }
+
 applyChange _ _ (AddThreadToCategory ic it) z = fromMaybe z $ do
   c <- M.lookup ic (categories z)
   t <- M.lookup it (threads z)
   return $ z { categories = M.insert ic (c { categoryThreadIds = categoryThreadIds c ++ [it] }) (categories z)
              , threads = M.insert it (t { categorization = categorization t ++ [ic] }) (threads z)
              , trashcan = S.delete it (trashcan z) }
+
 applyChange _ _ (RemoveThreadFromCategory ic it) z = fromMaybe z $ do
   c <- M.lookup ic (categories z)
   t <- M.lookup it (threads z)
@@ -244,6 +271,7 @@ applyChange _ _ (RemoveThreadFromCategory ic it) z = fromMaybe z $ do
   return $ z { categories = M.insert ic (c { categoryThreadIds = filter (/= it) (categoryThreadIds c) }) (categories z)
              , threads = M.insert it (t { categorization = cats' }) (threads z)
              , trashcan = if null cats' then S.insert it (trashcan z) else trashcan z }
+
 applyChange _ _ (RetitleCategory i i' t) z = fromMaybe z $ do
   c <- M.lookup i (categories z)
   guard . isNothing $ M.lookup i' (categories z)
@@ -252,7 +280,9 @@ applyChange _ _ (RetitleCategory i i' t) z = fromMaybe z $ do
                                            , categoryId = i'
                                            , categoryTitle = t
                                            , categoryCreatedFrom = Just i })
-                            (categories z) }
+                            (categories z)
+              , categoryOrdering = (\j -> if j == i then i' else j) <$> categoryOrdering z }
+
 applyChange _ _ (RetitleThread i i' t) z = fromMaybe z $ do
   th <- M.lookup i (threads z)
   guard . isNothing $ M.lookup i' (threads z)
@@ -265,6 +295,7 @@ applyChange _ _ (RetitleThread i i' t) z = fromMaybe z $ do
              , categories = replaceId <$> categories z }
   where replaceId c = c { categoryThreadIds = (\j -> if j == i then i' else j)
                                                 <$> categoryThreadIds c }
+
 applyChange _ _ (RemoveComment it it' ic) z = fromMaybe z $ do
   t <- M.lookup it (threads z)
   guard . isNothing $ M.lookup it' (threads z)
@@ -276,12 +307,17 @@ applyChange _ _ (RemoveComment it it' ic) z = fromMaybe z $ do
              , categories = replaceId <$> categories z }
   where replaceId c = c { categoryThreadIds = (\j -> if j == it then it' else j)
                                                 <$> categoryThreadIds c }
+
 applyChange _ _ (TrashCategory ic) z = fromMaybe z $ do
   c <- M.lookup ic (categories z)
-  return $ z { categories = M.insert ic c { categoryIsTrash = True } (categories z) }
+  return $ z { categories = M.insert ic c { categoryIsTrash = True } (categories z)
+             , categoryOrdering = filter (/= ic) (categoryOrdering z) }
+
 applyChange _ _ (UntrashCategory ic) z = fromMaybe z $ do
   c <- M.lookup ic (categories z)
-  return $ z { categories = M.insert ic c { categoryIsTrash = False } (categories z) }
+  return $ z { categories = M.insert ic c { categoryIsTrash = False } (categories z)
+              , categoryOrdering = ic : categoryOrdering z }
+
 applyChange _ d (SplitThread it ia ib ic) z = fromMaybe z $ do
   t <- M.lookup it (threads z)
   c <- M.lookup ic (comments z)
@@ -312,10 +348,12 @@ applyChange _ d (SplitThread it ia ib ic) z = fromMaybe z $ do
         interpolateAt x ys (z:zs)
           | x == z    = ys ++ interpolateAt x ys zs
           | otherwise = z : interpolateAt x ys zs
+
 applyChange _ _ (AddCommentToThread it ic) z = fromMaybe z $ do
   t <- M.lookup it (threads z)
   _ <- M.lookup ic (comments z)
   return $ z { threads = M.insert it t { threadCommentIds = threadCommentIds t ++ [ic] } (threads z) }
+
 applyChange _ _ (AddCommentRangeToThread it is ie iu) z = fromMaybe z $ do
   t <- M.lookup it (threads z)
   u <- M.lookup iu (threads z)
@@ -323,21 +361,29 @@ applyChange _ _ (AddCommentRangeToThread it is ie iu) z = fromMaybe z $ do
   return $ z { threads = M.insert iu u { threadCommentIds = threadCommentIds u ++ cs } (threads z) }
   where takeUntil p []     = []
         takeUntil p (x:xs) = if p x then [x] else x : takeUntil p xs
+
 applyChange _ _ (MoveCategory c i) z = fromMaybe z $ do
   _ <- M.lookup c (categories z)
   return $ z { categoryOrdering = categoryOrdering z & filter (/= c) & insertAt i c }
+
 applyChange _ _ (MoveComment it ic i) z = fromMaybe z $ do
   t <- M.lookup it (threads z)
   let cs = threadCommentIds t & filter (/= ic) & insertAt i ic
   return $ z { threads = M.insert it t { threadCommentIds = cs } (threads z) }
+
 applyChange _ _ (MoveThread ic it i) z = fromMaybe z $ do
   c <- M.lookup ic (categories z)
   let ts = categoryThreadIds c & filter (/= it) & insertAt i it
   return $ z { categories = M.insert ic c { categoryThreadIds = ts } (categories z) }
+
 applyChange _ _ (NewRelationLabel l) z = z { relationLabels = S.insert l (relationLabels z) }
+
 applyChange _ _ (DeleteRelationLabel l) z = z { relationLabels = S.delete l (relationLabels z) }
+
 applyChange _ _ (NewRelation r) z = z { relations = S.insert r (relations z) }
+
 applyChange _ _ (DeleteRelation r) z = z { relations = S.delete r (relations z) }
+
 applyChange u d (ComposedChanges cs) z = (foldl (.) id $ applyChange u d <$> cs) z
 
 
