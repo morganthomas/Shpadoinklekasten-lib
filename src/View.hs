@@ -1,6 +1,7 @@
-{-# LANGUAGE MonoLocalBinds    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE MonoLocalBinds       #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE TypeApplications     #-}
 
 
 module View where
@@ -20,6 +21,8 @@ import           UnliftIO
 import           Prelude hiding (div)
 
 import           Types
+
+default (ClassList)
 
 
 template :: Monad m => Text -> HtmlM m a -> HtmlM m a
