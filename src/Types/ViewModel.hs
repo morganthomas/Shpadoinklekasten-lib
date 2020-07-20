@@ -63,7 +63,7 @@ data InitialV = InitialV { newCategoryTitle :: Text
   deriving (Eq, Show)
 
 
-data ThreadV = ThreadV { viewedThread :: Thread
+data ThreadV = ThreadV { viewedThread :: ThreadId
                        , commentField :: Text
                        , editCommentField :: Maybe (CommentId, Text)
                        , retitleThreadField :: Maybe Text }
@@ -109,7 +109,7 @@ initialViewModel z = InitialV "" emptyLabel Nothing (M.fromList $ (,"") <$> M.ke
 initialModel :: Route -> Zettel -> ViewModel
 initialModel InitialRoute z = (z, InitialView (initialViewModel z))
 initialModel (ThreadRoute tid) z = case M.lookup tid (threads z) of
-  Just t  -> (z, ThreadView (ThreadV t "" Nothing Nothing))
+  Just _  -> (z, ThreadView (ThreadV tid "" Nothing Nothing))
   Nothing -> (z, InitialView (initialViewModel z))
 initialModel LoginRoute z = (z, LoginView (LoginV "" ""))
 

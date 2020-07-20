@@ -64,18 +64,19 @@ initialView model = div [class' "s11k-view-initial"] [
 
 threadView :: ZettelController m => (Zettel, ThreadV) -> HtmlM m (Zettel, ThreadV)
 threadView model@(z, v) =
-  let t = viewedThread v
-  in div [class' "s11k-view-thread"] $ [
-    backToInitial,
-    div [class' "s11k-categories row"]
-    ( h2 [class' "s11k-category col"] . (:[]) . text
-      <$> catMaybes (categoryIdTitle z <$> categorization t) ),
-    h3 [class' "s11k-thread-title"] [ text (threadTitle t) ],
-    div [class' "s11k-thread-author"] [ text (unUserId (threadAuthor t)) ],
-    div [class' "s11k-thread-created"] [ text (dateView (threadCreated t)) ],
-    --div [class' "s11k-links row"] (linkView <$> links t),
-    addCommentWidget model,
-    div [class' "s11k-comments"] (commentView <$> threadComments z t) ]
+  case M.lookup (viewedThread v) (threads z) of
+    Just t ->
+      div [class' "s11k-view-thread"] $ [
+        backToInitial,
+          div [class' "s11k-categories row"]
+        ( h2 [class' "s11k-category col"] . (:[]) . text
+          <$> catMaybes (categoryIdTitle z <$> categorization t) ),
+        h3 [class' "s11k-thread-title"] [ text (threadTitle t) ],
+        div [class' "s11k-thread-author"] [ text (unUserId (threadAuthor t)) ],
+        div [class' "s11k-thread-created"] [ text (dateView (threadCreated t)) ],
+        --div [class' "s11k-links row"] (linkView <$> links t),
+        addCommentWidget model,
+        div [class' "s11k-comments"] (commentView <$> threadComments z t) ]
 
 
 loginView :: ZettelController m => (Zettel, LoginV) -> HtmlM m (Zettel, LoginV)

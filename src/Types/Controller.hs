@@ -151,7 +151,7 @@ router InitialRoute = pur $
     Nothing -> (z, LoginView (LoginV "" ""))
 router (ThreadRoute tid) = pur $
   (\(z, v) -> case (session z, M.lookup tid (threads z)) of
-                (Just _, Just t) -> (z, ThreadView (ThreadV t "" Nothing Nothing))
+                (Just _, Just _) -> (z, ThreadView (ThreadV tid "" Nothing Nothing))
                 (Nothing, _) -> (z, LoginView (LoginV "" ""))
                 _ -> (z, v))
 router LoginRoute = pur $ \(z, _) -> (z, LoginView (LoginV "" ""))
@@ -242,12 +242,12 @@ applyChange _ _ (NewCategory i t) z = fromMaybe z $ do
              , categoryOrdering = i : categoryOrdering z }
 
 applyChange u d (NewThread ic it t) z = fromMaybe z $ do
-  _ <- M.lookup ic (categories z)
+  c <- M.lookup ic (categories z)
   guard . isNothing $ M.lookup it (threads z)
-  return $ z { threads = M.insert it (Thread it t u d [] [ic] Nothing) (threads z) }
+  return $ z { threads = M.insert it (Thread it t u d [] [ic] Nothing) (threads z)
+             , categories = M.insert ic c { categoryThreadIds = categoryThreadIds c ++ [it] } (categories z) }
 
 applyChange u d (NewComment it ic t) z = fromMaybe z $ do
-  guard . isNothing $ M.lookup ic (comments z)
   th <- M.lookup it (threads z)
   return $ z { comments = M.insert ic (Comment ic u d [Edit d t]) (comments z)
              , threads = M.insert it th { threadCommentIds = threadCommentIds th ++ [ic] } (threads z) }
@@ -537,34 +537,34 @@ instance ( Monad m
         newThread (categoryId cat) newId t (sessionId s)
       _ -> return ()
   
-  handleNewComment = kleisliT $ \(z, ThreadV t txt _ _) -> do
+  handleNewComment = kleisliT $ \(z, ThreadV tid txt _ _) -> do
     newId <- CommentId <$> lift (liftIO randomIO)
     commit . pur . second $ \v -> v { commentField = "" }
-    maybe (return ()) (newComment (threadId t) newId txt) (sessionId <$> session z)
+    maybe (return ()) (newComment tid newId txt) (sessionId <$> session z)
 
   handleOpenEdit c = pur (second (\v -> v { editCommentField = Just (c, "") } ) )
 
   handleCancelEdit = pur (second (\v -> v { editCommentField = Nothing } ) )
 
-  handleSaveEdit = kleisliT $ \(z, ThreadV t _ f _) ->
-    case (f, session z, M.lookup (threadId t) (threads z)) of
-      (Just (c, txt), Just s, Just ts) -> do
+  handleSaveEdit = kleisliT $ \(z, ThreadV tid _ f _) ->
+    case (f, session z, M.lookup tid (threads z)) of
+      (Just (c, txt), Just s, Just _) -> do
         newEdit c txt (sessionId s)
         commit . pur . second $ \v -> v { editCommentField = Nothing }
       _ -> return ()
 
-  handleAddThreadToCategory cid = kleisliT $ \(z, ThreadV t _ _ _) ->
-    maybe (return ()) (addThreadToCategory cid (threadId t)) (sessionId <$> session z)
+  handleAddThreadToCategory cid = kleisliT $ \(z, ThreadV tid _ _ _) ->
+    maybe (return ()) (addThreadToCategory cid tid) (sessionId <$> session z)
 
-  handleRemoveThreadFromCategory cid = kleisliT $ \(z, ThreadV t _ _ _) ->
-    maybe (return ()) (removeThreadFromCategory cid (threadId t)) (sessionId <$> session z)
+  handleRemoveThreadFromCategory cid = kleisliT $ \(z, ThreadV tid _ _ _) ->
+    maybe (return ()) (removeThreadFromCategory cid tid) (sessionId <$> session z)
 
-  handleRemoveComment cid = kleisliT $ \(z, ThreadV t _ _ _) ->
+  handleRemoveComment cid = kleisliT $ \(z, ThreadV tid _ _ _) ->
     case session z of
       Just s -> do
         newId <- ThreadId <$> lift (liftIO randomIO)
-        removeComment (threadId t) newId cid (sessionId s)
-        commit . pur . second $ \v -> v { viewedThread = t { threadId = newId } }
+        removeComment tid newId cid (sessionId s)
+        commit . pur . second $ \v -> v { viewedThread = newId }
 
   handleOpenRetitleCategory cid = pur . second $ \v -> v { retitleCategoryField = Just (cid, "") }
 
@@ -586,17 +586,17 @@ instance ( Monad m
     maybe (return ()) (uncurry (uncurry (uncurry retitleThread))) $ do
       txt <- retitleThreadField v
       s   <- sessionId <$> session z
-      return (((threadId (viewedThread v), newId), txt), s)
+      return (((viewedThread v, newId), txt), s)
 
   handleTrashCategory cid = kleisliT $ \(z, _) ->
     maybe (return ()) (trashCategory cid) (sessionId <$> session z)
 
-  handleSplitThread cid = kleisliT $ \(z, ThreadV t _ _ _) ->
+  handleSplitThread cid = kleisliT $ \(z, ThreadV tid _ _ _) ->
     case session z of
       Just s -> do
         newIdA <- ThreadId <$> lift (liftIO randomIO)
         newIdB <- ThreadId <$> lift (liftIO randomIO)
-        splitThread (threadId t) newIdA newIdB cid (sessionId s)
+        splitThread tid newIdA newIdB cid (sessionId s)
       Nothing -> return ()
 
   handleMoveCategoryUp cid = kleisliT $ \(z, _) ->
@@ -611,16 +611,16 @@ instance ( Monad m
       s <- sessionId <$> session z
       return ((cid, i+1), s)
 
-  handleMoveCommentUp cid = kleisliT $ \(z, ThreadV t _ _ _) ->
+  handleMoveCommentUp cid = kleisliT $ \(z, ThreadV tid _ _ _) ->
     maybe (return ()) (uncurry (uncurry (uncurry moveComment))) $ do
-      t <- M.lookup (threadId t) (threads z)
+      t <- M.lookup tid (threads z)
       i <- findIndex (== cid) (threadCommentIds t)
       s <- sessionId <$> session z
       return (((threadId t, cid), i-1), s)
 
-  handleMoveCommentDown cid = kleisliT $ \(z, ThreadV t _ _ _) ->
+  handleMoveCommentDown cid = kleisliT $ \(z, ThreadV tid _ _ _) ->
     maybe (return ()) (uncurry (uncurry (uncurry moveComment))) $ do
-      t <- M.lookup (threadId t) (threads z)
+      t <- M.lookup tid (threads z)
       i <- findIndex (== cid) (threadCommentIds t)
       s <- sessionId <$> session z
       return (((threadId t, cid), i+1), s)
@@ -669,20 +669,20 @@ instance FromJSON Change where
     where
       parseNewCategory o = do
         i <- o .: "categoryId"
-        t <- o .: "title"
+        t <- o .: "categoryTitle"
         return (NewCategory i t)
 
       parseNewThread o = do
         ic <- o .: "categoryId"
         it <- o .: "threadId"
-        t  <- o .: "title"
+        t  <- o .: "threadTitle"
         return (NewThread ic it t)
 
       parseNewComment o = do
         t <- o .: "threadId"
         i <- o .: "commentId"
         x <- o .: "text"
-        return (NewComment i t x)
+        return (NewComment t i x)
 
       parseNewEdit o = do
         i <- o .: "commentId"
@@ -780,8 +780,8 @@ instance FromJSON Change where
 
 
 instance ToJSON Change where
-  toJSON (NewCategory i t) = object [ "categoryId" .= i, "title" .= t ]
-  toJSON (NewThread ic it t) = object [ "categoryId" .= ic, "threadId" .= it, "title" .= t]
+  toJSON (NewCategory i t) = object [ "categoryId" .= i, "categoryTitle" .= t ]
+  toJSON (NewThread ic it t) = object [ "categoryId" .= ic, "threadId" .= it, "threadTitle" .= t]
   toJSON (NewComment t i x) = object [ "threadId" .= t, "commentId" .= i, "text" .= x]
   toJSON (NewEdit i x) = object [ "commentId" .= i, "text" .= x ]
   toJSON (AddThreadToCategory c t) = object [ "toCategoryId" .= c, "addThreadId" .= t ]
