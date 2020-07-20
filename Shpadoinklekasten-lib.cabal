@@ -17,13 +17,19 @@ extra-source-files:  CHANGELOG.md
 
 library
   exposed-modules:     Types
+                       Types.Model
+                       Types.ViewModel
+                       Types.Controller
                        View
   build-depends:       base ^>=4.12.0.0
                      , aeson
+                     , bson
                      , bytestring
                      , containers ^>=0.6.0.0
                      , exceptions
+                     , extra
                      , jsaddle
+                     , next-uuid
                      , random ^>=1.1
                      , servant ^>=0.16
                      , text ^>=1.2.0.0
