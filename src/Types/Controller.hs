@@ -44,11 +44,15 @@ import qualified Data.UUID as U
 import           Data.UUID.Next (nextUUID)
 import           GHC.Generics
 import           Language.Javascript.JSaddle (MonadJSM (..), JSM, JSVal, liftJSM, askJSM, runJSaddle, valToNumber, valToText, eval, (#), makeObject, toJSString, jsg1, val)
+#ifndef ghcjs_HOST_OS
+import           Network.HTTP.Client ( newManager, defaultManagerSettings )
+import           Servant.Client
+#endif
 import           Servant.API hiding (Link)
 import           Shpadoinkle.Backend.ParDiff
 import           Shpadoinkle.Html.LocalStorage
 import           Shpadoinkle.Router
-import           Shpadoinkle.Router.Client (client, runXHR)
+import           Shpadoinkle.Router.Client (client, runXHR, runXHR')
 import           System.Random (randomIO)
 import           UnliftIO
 import           UnliftIO.Concurrent (forkIO)
@@ -856,10 +860,21 @@ instance MonadUnliftIO App where
     return $ UnliftIO $ \(App m) -> runJSaddle @IO c m
 
 
+#ifdef ghcjs_HOST_OS
 instance ZettelEditor App where
   saveChange c s = runXHR App $ saveChangeM c s
   getDatabase s = runXHR App $ getDatabaseM s
   login u p = runXHR App $ loginM u p
+#else
+liftClientM m = do
+  manager' <- liftIO $ newManager defaultManagerSettings
+  runXHR' App m (mkClientEnv manager' (BaseUrl Http "localhost" 8080 ""))
+
+instance ZettelEditor App where
+  saveChange c s = liftClientM $ saveChangeM c s
+  getDatabase s = liftClientM $ getDatabaseM s
+  login u p = liftClientM $ loginM u p
+#endif
 
 
 instance ( ZettelEditor m
