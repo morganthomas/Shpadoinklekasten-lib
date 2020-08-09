@@ -523,11 +523,11 @@ instance ( Monad m
       Just s -> do
         z' <- getDatabase (sessionId s)
         return . pur $ const (z', initialViewModel z')
-      Nothing -> return (pur id)
+      Nothing -> return done
   
   handleNewCategory = kleisli $ \(z,i) -> do
     newId <- CategoryId <$> liftIO randomIO
-    return $ maybe (pur id) (voidRunContinuationT . newCategory newId (newCategoryTitle i)) (sessionId <$> session z)
+    return $ maybe done (voidRunContinuationT . newCategory newId (newCategoryTitle i)) (sessionId <$> session z)
   
   handleNewThread cat = kleisliT $ \(z,i) ->
     case (M.lookup (categoryId cat) (newThreadTitles i), session z) of
