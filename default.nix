@@ -8,12 +8,13 @@
 , strictDeps ? false
 , isJS ? false
 , asShell ? false
+, localShpadoinkle ? false
 }:
 let
 
 
   # It's a shpadoinkle day
-  shpadoinkle = builtins.fetchGit {
+  shpadoinkle = if localShpadoinkle then ../Shpadoinkle else builtins.fetchGit {
     url = https://gitlab.com/morganthomas/Shpadoinkle.git;
     rev = "84e0108283c3226ac3e49d1e47b6359eace38c4a";
     ref = "router-extension";

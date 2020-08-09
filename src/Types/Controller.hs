@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE ExtendedDefaultRules       #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE KindSignatures             #-}
@@ -44,21 +45,19 @@ import qualified Data.UUID as U
 import           Data.UUID.Next (nextUUID)
 import           GHC.Generics
 import           Language.Javascript.JSaddle (MonadJSM (..), JSM, JSVal, liftJSM, askJSM, runJSaddle, valToNumber, valToText, eval, (#), makeObject, toJSString, jsg1, val)
-#ifndef ghcjs_HOST_OS
-import           Network.HTTP.Client ( newManager, defaultManagerSettings )
-import           Servant.Client
-#endif
 import           Servant.API hiding (Link)
 import           Shpadoinkle.Backend.ParDiff
 import           Shpadoinkle.Html.LocalStorage
 import           Shpadoinkle.Router
-import           Shpadoinkle.Router.Client (client, runXHR, runXHR')
+import           Shpadoinkle.Router.Client
 import           System.Random (randomIO)
 import           UnliftIO
 import           UnliftIO.Concurrent (forkIO)
 
 import           Types.Model
 import           Types.ViewModel
+
+default ( Text )
 
 
 data Change = NewCategory CategoryId Text
@@ -867,8 +866,10 @@ instance ZettelEditor App where
   login u p = runXHR App $ loginM u p
 #else
 liftClientM m = do
-  manager' <- liftIO $ newManager defaultManagerSettings
-  runXHR' App m (mkClientEnv manager' (BaseUrl Http "localhost" 8080 ""))
+  liftIO $ putStrLn "in liftClientM"
+  liftJSM $ eval "console.log('in liftClientM');"
+  liftIO $ putStrLn "did console log"
+  runXHR' App m . mkClientEnv $ BaseUrl Http "localhost" 8080 ""
 
 instance ZettelEditor App where
   saveChange c s = liftClientM $ saveChangeM c s
