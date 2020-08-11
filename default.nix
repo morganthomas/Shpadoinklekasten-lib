@@ -16,7 +16,7 @@ let
   # It's a shpadoinkle day
   shpadoinkle = if localShpadoinkle then ../Shpadoinkle else builtins.fetchGit {
     url = https://gitlab.com/morganthomas/Shpadoinkle.git;
-    rev = "84e0108283c3226ac3e49d1e47b6359eace38c4a";
+    rev = "8f4737ac0d91039c1d23b7ea853337536621b61a";
     ref = "router-extension";
   };
 
@@ -57,7 +57,7 @@ let
 
 
   # Haskell specific overlay (for you to extend)
-  haskell-overlay = hself: hsuper: {
+  haskell-overlay = hself: hsuper: with pkgs.haskell.lib; {
     aeson = hsuper.aeson;
     containers = hsuper.containers;
     exceptions = hsuper.exceptions;

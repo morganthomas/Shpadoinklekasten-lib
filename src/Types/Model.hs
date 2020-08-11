@@ -28,6 +28,7 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Class
 import           Control.PseudoInverseCategory (EndoIso, piiso)
 import           Control.ShpadoinkleContinuation
+import qualified Crypto.Hash.SHA256 as SHA256
 import           Data.Aeson
 import qualified Data.Bson as B
 import           Data.ByteString.Lazy (fromStrict, toStrict)
@@ -50,7 +51,7 @@ import           Servant.API hiding (Link)
 import           Shpadoinkle.Backend.ParDiff
 import           Shpadoinkle.Html.LocalStorage
 import           Shpadoinkle.Router
-import           Shpadoinkle.Router.Client (client, runXHR)
+import           Shpadoinkle.Router.Client
 import           System.Random (randomIO)
 import           UnliftIO
 import           UnliftIO.Concurrent (forkIO)
@@ -222,7 +223,11 @@ commentLastEdited c = fromMaybe (fromGregorian 0 0 0) $ editCreated . fst <$> un
 
 
 hash :: Text -> JSM PasswordHash
+#ifdef ghcjs_HOST_OS
 hash t = PasswordHash <$> (jsg1 ("sha256" :: Text) (val t) >>= valToText)
+#else
+hash = return . PasswordHash . decodeUtf8 . SHA256.hash . encodeUtf8
+#endif
 
 
 nextThreadId :: Zettel -> ThreadId -> ThreadId
