@@ -510,27 +510,15 @@ instance ( Monad m
     h   <- lift (liftJSM (hash p))
     commit . pur . second . const $ LoginV "" ""
     res <- lift $ login (UserId u) h
-    -- _ <- error "did login"
     case res of
       Just s -> do
-        -- _ <- error "got session"
         commit . pur . first $ \z' -> z' { session = Just s }
-        -- _ <- error "commited session"
         commit . kleisliT $ \(z',v) -> do
-          -- _ <- error "in kleisliT"
--- #ifdef ghcjs_HOST_OS
           lift $ setStorage "session" (sessionId s)
--- #endif
-          -- _ <- error "set session"
           lift $ navigate @SPA InitialRoute
-          -- _ <- error "navigated"
           z'' <- lift . getDatabase $ sessionId s
-          -- _ <- error "got database"
-          commit . pur . first $ const z' -- TODO z''
-          -- _ <- error "committed database"
+          commit . pur . first $ const z''
           lift $ navigate @SPA InitialRoute
-          --error "navigated again"
-          --error "finished commit . kleisliT"
       Nothing -> do
         _ <- error "no session"
         return () -- TODO: show message saying login failed
