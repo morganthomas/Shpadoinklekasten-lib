@@ -31,6 +31,7 @@ import           Control.ShpadoinkleContinuation
 import qualified Crypto.Hash.SHA256 as SHA256
 import           Data.Aeson
 import qualified Data.Bson as B
+import qualified Data.ByteString.Base16 as Base16
 import           Data.ByteString.Lazy (fromStrict, toStrict)
 import           Data.Either.Extra (eitherToMaybe)
 import           Data.Function ((&))
@@ -226,7 +227,7 @@ hash :: Text -> JSM PasswordHash
 #ifdef ghcjs_HOST_OS
 hash t = PasswordHash <$> (jsg1 ("sha256" :: Text) (val t) >>= valToText)
 #else
-hash = return . PasswordHash . decodeUtf8 . SHA256.hash . encodeUtf8
+hash = return . PasswordHash . decodeUtf8 . Base16.encode . SHA256.hash . encodeUtf8
 #endif
 
 

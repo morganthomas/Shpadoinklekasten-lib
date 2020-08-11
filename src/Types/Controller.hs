@@ -520,7 +520,6 @@ instance ( Monad m
           commit . pur . first $ const z''
           lift $ navigate @SPA InitialRoute
       Nothing -> do
-        _ <- error "no session"
         return () -- TODO: show message saying login failed
  
   reload = kleisli $ \(z,_) ->
@@ -867,13 +866,13 @@ instance ZettelEditor App where
   getDatabase s = runXHR App $ getDatabaseM s
   login u p = runXHR App $ loginM u p
 #else
+liftClientM :: ClientM a -> App a
+liftClientM m = runXHR' App m . mkClientEnv $ BaseUrl Http "localhost" 8080 ""
+
 instance ZettelEditor App where
-  saveChange c s = return ()
-  getDatabase s = return emptyZettel
-  login u p = do -- _ <- error "in login"
-                 Just <$> (Session <$> (SessionId <$> liftIO randomIO)
-                                <*> (pure (UserId "morgan"))
-                                <*> getToday)
+  saveChange c s = liftClientM $ saveChangeM c s
+  getDatabase s = liftClientM $ getDatabaseM s
+  login u p = liftClientM $ loginM u p
 #endif
 
 

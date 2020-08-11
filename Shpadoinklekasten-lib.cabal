@@ -24,6 +24,7 @@ library
                        View
   build-depends:       base ^>=4.12.0.0
                      , aeson
+                     , base16-bytestring
                      , bson
                      , bytestring
                      , containers ^>=0.6.0.0
