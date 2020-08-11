@@ -48,7 +48,7 @@ import           Language.Javascript.JSaddle (MonadJSM (..), JSM, JSVal, liftJSM
 import           Servant.API hiding (Link)
 import           Shpadoinkle.Backend.ParDiff
 import           Shpadoinkle.Html.LocalStorage
-import           Shpadoinkle.Router
+import           Shpadoinkle.Router hiding (MonadJSM (..))
 import           Shpadoinkle.Router.Client
 import           System.Random (randomIO)
 import           UnliftIO

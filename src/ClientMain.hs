@@ -7,7 +7,7 @@ module ClientMain ( main ) where
 
 
 import           Data.Text
-import           Language.Javascript.JSaddle (MonadJSM, liftJSM, eval)
+import           Language.Javascript.JSaddle (liftJSM, eval)
 import           Shpadoinkle
 import           Shpadoinkle.Backend.ParDiff
 import           Shpadoinkle.Html
