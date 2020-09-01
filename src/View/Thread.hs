@@ -9,13 +9,14 @@ module View.Thread where
 import qualified Data.Map as M
 import           Prelude hiding (div)
 import           Data.Maybe (catMaybes)
+import           Data.Text
+import           Data.Time.Calendar
 
 import           Shpadoinkle
 import           Shpadoinkle.Html
 import           Shpadoinkle.Router
 
 import           Types
-import           View.Components
 
 default (ClassList)
 
@@ -56,3 +57,5 @@ commentView c = div [class' "s11k-comment mb-2"] [
     [ strong [] . (:[]) . text $ "- " <> unUserId (commentAuthor c)
       <> ", " <> dateView (commentCreated c) ] ]
 
+dateView :: Day -> Text
+dateView = pack . (\(y, m, d) -> show y <> "-" <> show m <> "-" <> show d) . toGregorian

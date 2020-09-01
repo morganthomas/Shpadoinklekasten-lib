@@ -25,7 +25,6 @@ library
                        View.Login
                        View.Initial
                        View.Thread
-                       View.Components
   build-depends:       base ^>=4.12.0.0
                      , aeson
                      , base16-bytestring
