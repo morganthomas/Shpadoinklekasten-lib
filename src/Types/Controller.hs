@@ -546,7 +546,7 @@ instance ( Monad m
     commit . pur . second $ \v -> v { commentField = "" }
     maybe (return ()) (newComment tid newId txt) (sessionId <$> session z)
 
-  handleOpenEdit c = pur (second (\v -> v { editCommentField = Just (c, "") } ) )
+  handleOpenEdit c = pur (\(z, v) -> (z, v { editCommentField = Just (c, fromMaybe "" $ commentText <$> M.lookup c (comments z)) }))
 
   handleCancelEdit = pur (second (\v -> v { editCommentField = Nothing } ) )
 
