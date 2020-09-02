@@ -212,7 +212,6 @@ threadComments z t = catMaybes $ flip M.lookup (comments z) <$> threadCommentIds
 commentText :: Comment -> Text
 commentText c = fromMaybe "" $ editText . fst <$> uncons (commentEdits c)
 
-
 commentEdited :: Comment -> Bool
 commentEdited c = case commentEdits c of
                     (_:_:_) -> True

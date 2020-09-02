@@ -138,3 +138,8 @@ getNewThreadTitle (_, i) cat = fromMaybe "" $ M.lookup (categoryId cat) (newThre
 
 setCommentField :: (Zettel, ThreadV) -> Text -> (Zettel, ThreadV)
 setCommentField (z, v) t = (z, v { commentField = t })
+
+setEditCommentField :: (Zettel, ThreadV) -> Text -> (Zettel, ThreadV)
+setEditCommentField (z, v) t = case editCommentField v of
+  (Just (i, u)) -> (z, v { editCommentField = Just (i, t) })
+  Nothing       -> (z, v)

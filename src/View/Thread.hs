@@ -35,7 +35,7 @@ threadView model@(z, v) =
         div [class' "s11k-thread-created"] [ text (dateView (threadCreated t)) ],
         --div [class' "s11k-links row"] (linkView <$> links t),
         addCommentWidget model,
-        div [class' "s11k-comments"] (commentView <$> threadComments z t) ]
+        div [class' "s11k-comments"] (commentDispatch model <$> threadComments z t) ]
 
 
 backToInitial :: MonadJSM m => HtmlM m (Zettel, ThreadV)
@@ -50,12 +50,32 @@ addCommentWidget model@(_,v) = div [class' "s11k-add-comment form-group"] [
   button [ class' "form-control btn btn-primary", onClickE handleNewComment ] [ text "Add Comment" ] ]
 
 
-commentView :: Monad m => Comment -> HtmlM m (Zettel, ThreadV)
+commentDispatch :: ZettelController m => (Zettel, ThreadV) -> Comment -> HtmlM m (Zettel, ThreadV)
+commentDispatch model@(z, t) c = 
+  case (editCommentField t) of
+    (Just (i, t)) -> if (commentId c == i) then commentEditor model i t c else commentView c   
+    Nothing       -> commentView c
+
+commentEditor :: ZettelController m => (Zettel, ThreadV) 
+                                    -> CommentId
+                                    -> Text
+                                    -> Comment 
+                                    -> HtmlM m (Zettel, ThreadV)
+commentEditor model i t c = div [class' "s11k-add-comment form-group" ] [ 
+    textarea' [ class' "form-control", ("rows", "4"), ("cols", "70"), onSubmitE handleSaveEdit
+              , onInput (setEditCommentField model), ("value", textProp t) ],
+    div [class' "s11k-comment-metadata"]
+      [ strong [] . (:[]) . text $ "- " <> unUserId (commentAuthor c)
+        <> ", " <> dateView (commentCreated c) ],
+    button [ class' "form-control btn", onClickE handleSaveEdit ] [ text "Save Comment" ] ]
+
+commentView :: ZettelController m => Comment -> HtmlM m (Zettel, ThreadV)
 commentView c = div [class' "s11k-comment mb-2"] [
   div [class' "s11k-comment-text mb-1"] [ text (commentText c) ],
   div [class' "s11k-comment-metadata"]
     [ strong [] . (:[]) . text $ "- " <> unUserId (commentAuthor c)
-      <> ", " <> dateView (commentCreated c) ] ]
+      <> ", " <> dateView (commentCreated c) ],
+  button [ class' "form-control btn", onClickE (handleOpenEdit $ commentId c)  ] [ text "Edit Comment" ] ]
 
 dateView :: Day -> Text
 dateView = pack . (\(y, m, d) -> show y <> "-" <> show m <> "-" <> show d) . toGregorian
