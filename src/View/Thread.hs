@@ -74,8 +74,8 @@ commentView c = div [class' "s11k-comment mb-2"] [
   div [class' "s11k-comment-text mb-1"] [ text (commentText c) ],
   div [class' "s11k-comment-metadata"]
     [ strong [] . (:[]) . text $ "- " <> unUserId (commentAuthor c)
-      <> ", " <> dateView (commentCreated c) ],
-  button [ class' "form-control btn", onClickE (handleOpenEdit $ commentId c)  ] [ text "Edit Comment" ] ]
+      <> ", " <> dateView (commentCreated c)
+    , button [ class' "form-control btn", onClickE (handleOpenEdit $ commentId c)  ] [ text "Edit Comment" ] ] ]
 
 dateView :: Day -> Text
 dateView = pack . (\(y, m, d) -> show y <> "-" <> show m <> "-" <> show d) . toGregorian
