@@ -35,7 +35,7 @@ import qualified Data.ByteString.Base16 as Base16
 import           Data.ByteString.Lazy (fromStrict, toStrict)
 import           Data.Either.Extra (eitherToMaybe)
 import           Data.Function ((&))
-import           Data.List (concatMap, uncons, findIndex, dropWhile, takeWhile)
+import           Data.List (concatMap, uncons, findIndex, dropWhile, takeWhile, sortBy)
 import qualified Data.Map as M
 import           Data.Maybe (catMaybes, fromMaybe, maybeToList, isNothing)
 import           Data.Proxy
@@ -210,7 +210,7 @@ threadComments z t = catMaybes $ flip M.lookup (comments z) <$> threadCommentIds
 
 
 commentText :: Comment -> Text
-commentText c = fromMaybe "" $ editText . fst <$> uncons (commentEdits c)
+commentText c = fromMaybe "" $ editText . fst <$> uncons (sortBy (\e f -> compare (editCreated f) (editCreated e)) $ commentEdits c)
 
 commentEdited :: Comment -> Bool
 commentEdited c = case commentEdits c of
