@@ -483,9 +483,9 @@ deleteRelation r = saveChange (DeleteRelation r)
 getToday :: MonadJSM m => m Day
 getToday = do
   date  <- liftJSM $ eval ("new Date()" :: Text) >>= makeObject
-  day   <- round <$> liftJSM (((date # ("getDay" :: Text) :: [JSVal] -> JSM JSVal) $ []) >>= valToNumber)
-  month <- round <$> liftJSM (((date # ("getMonth" :: Text) :: [JSVal] -> JSM JSVal) $ []) >>= valToNumber)
-  year  <- round <$> liftJSM (((date # ("getYear" :: Text) :: [JSVal] -> JSM JSVal) $ []) >>= valToNumber)
+  day   <- round <$> liftJSM (((date # ("getDate" :: Text) :: [JSVal] -> JSM JSVal) $ []) >>= valToNumber)
+  month <- (1+) . round <$> liftJSM (((date # ("getMonth" :: Text) :: [JSVal] -> JSM JSVal) $ []) >>= valToNumber)
+  year  <- (1900+) . round <$> liftJSM (((date # ("getYear" :: Text) :: [JSVal] -> JSM JSVal) $ []) >>= valToNumber)
   return (fromGregorian year month day)
 
 
