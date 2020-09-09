@@ -42,7 +42,8 @@ import           Data.Proxy
 import qualified Data.Set as S
 import           Data.Text (Text, intercalate, split, reverse)
 import           Data.Text.Encoding (decodeUtf8, encodeUtf8)
-import           Data.Time.Calendar
+import           Data.Time.Calendar (fromGregorian)
+import           Data.Time.Clock (UTCTime (..), secondsToDiffTime)
 import           Data.Tuple.Extra (uncurry3)
 import qualified Data.UUID as U
 import           Data.UUID.Next (nextUUID)
@@ -111,7 +112,7 @@ data Relation =
 
 
 data Edit = Edit
-  { editCreated :: Day
+  { editCreated :: UTCTime
   , editText :: Text }
   deriving (Eq, Show)
 
@@ -119,7 +120,7 @@ data Edit = Edit
 data Comment = Comment
   { commentId :: CommentId
   , commentAuthor :: UserId
-  , commentCreated :: Day
+  , commentCreated :: UTCTime
   , commentEdits :: [Edit] }
   deriving (Eq, Show)
 
@@ -137,7 +138,7 @@ data Thread = Thread
   { threadId :: ThreadId
   , threadTitle :: Text
   , threadAuthor :: UserId
-  , threadCreated :: Day
+  , threadCreated :: UTCTime
   , threadCommentIds :: [CommentId]
   , categorization :: [CategoryId]
   , threadCreatedFrom :: Maybe ThreadId }
@@ -148,14 +149,14 @@ data UserProfile = UserProfile
   { userId :: UserId
   , userFullName :: Text
   , userEmail :: Text
-  , userCreated :: Day }
+  , userCreated :: UTCTime }
   deriving (Eq, Show)
 
 
 data Session = Session
   { sessionId      :: SessionId
   , sessionUser    :: UserId
-  , sessionCreated :: Day }
+  , sessionCreated :: UTCTime }
   deriving (Eq, Read, Show)
 
 
@@ -218,8 +219,8 @@ commentEdited c = case commentEdits c of
                     _       -> False
 
 
-commentLastEdited :: Comment -> Day
-commentLastEdited c = fromMaybe (fromGregorian 0 0 0) $ editCreated . fst <$> uncons (commentEdits c)
+commentLastEdited :: Comment -> UTCTime
+commentLastEdited c = fromMaybe (UTCTime (fromGregorian 0 0 0) (secondsToDiffTime 0)) $ editCreated . fst <$> uncons (commentEdits c)
 
 
 hash :: Text -> JSM PasswordHash
@@ -236,29 +237,6 @@ nextThreadId z (ThreadId i) =
   case M.lookup i' (threads z) of
     Just _ -> nextThreadId z i'
     Nothing -> i'
-
-
-data Gregorian = Gregorian { gregYear :: Integer, gregMonth :: Int, gregDay :: Int }
-  deriving (Eq, Show)
-
-
-gregToDay :: Gregorian -> Maybe Day
-gregToDay g = fromGregorianValid (gregYear g) (gregMonth g) (gregDay g)
-
-
-dayToGreg :: Day -> Gregorian
-dayToGreg = uncurry3 Gregorian . toGregorian
-
-
-instance B.Val Gregorian where
-  val g = B.Doc
-          [ "year" B.:= B.val (gregYear g)
-          , "month" B.:= B.val (gregMonth g)
-          , "day" B.:= B.val (gregDay g) ]
-  cast' (B.Doc d) = Gregorian <$> (d B.!? "year" >>= B.cast')
-                              <*> (d B.!? "month" >>= B.cast')
-                              <*> (d B.!? "day" >>= B.cast')
-  cast' _ = Nothing
 
 
 instance Ord RelationLabel where
@@ -480,14 +458,14 @@ instance B.Val Thread where
           [ "id" B.:= B.val (threadId t)
           , "title" B.:= B.val (threadTitle t)
           , "author" B.:= B.val (threadAuthor t)
-          , "created" B.:= B.val (dayToGreg (threadCreated t))
+          , "created" B.:= B.val (threadCreated t)
           , "comments" B.:= B.val (threadCommentIds t)
           , "categorization" B.:= B.val (categorization t)
           , "from" B.:= B.val (threadCreatedFrom t) ]
   cast' (B.Doc d) = Thread <$> (d B.!? "id" >>= B.cast')
                            <*> (d B.!? "title" >>= B.cast')
                            <*> (d B.!? "author" >>= B.cast')
-                           <*> (d B.!? "created" >>= B.cast' >>= gregToDay)
+                           <*> (d B.!? "created" >>= B.cast')
                            <*> (d B.!? "comments" >>= B.cast')
                            <*> (d B.!? "categorization" >>= B.cast')
                            <*> (d B.!? "from" >>= B.cast')
@@ -507,9 +485,9 @@ instance ToJSON Edit where
 
 instance B.Val Edit where
   val e = B.Doc
-          [ "created" B.:= B.val (dayToGreg (editCreated e))
+          [ "created" B.:= B.val (editCreated e)
           , "text" B.:= B.val (editText e) ]
-  cast' (B.Doc d) = Edit <$> (d B.!? "created" >>= B.cast' >>= gregToDay)
+  cast' (B.Doc d) = Edit <$> (d B.!? "created" >>= B.cast')
                          <*> (d B.!? "text" >>= B.cast')
 
 
@@ -533,12 +511,12 @@ instance ToJSON Comment where
 instance B.Val Comment where
   val c = B.Doc
           [ "id" B.:= B.val (commentId c)
-          , "created" B.:= B.val (dayToGreg (commentCreated c))
+          , "created" B.:= B.val (commentCreated c)
           , "author" B.:= B.val (commentAuthor c)
           , "edits" B.:= B.val (commentEdits c) ]
   cast' (B.Doc d) = Comment <$> (d B.!? "id" >>= B.cast')
                             <*> (d B.!? "author" >>= B.cast')
-                            <*> (d B.!? "created" >>= B.cast' >>= gregToDay)
+                            <*> (d B.!? "created" >>= B.cast')
                             <*> (d B.!? "edits" >>= B.cast')
   cast' _ = Nothing
 
@@ -565,11 +543,11 @@ instance B.Val UserProfile where
         [ "id" B.:= B.val (userId u)
         , "fullName" B.:= B.val (userFullName u)
         , "email" B.:= B.val (userEmail u)
-        , "created" B.:= B.val (dayToGreg (userCreated u)) ]
+        , "created" B.:= B.val (userCreated u) ]
   cast' (B.Doc d) = UserProfile <$> (d B.!? "id" >>= B.cast')
                                 <*> (d B.!? "fullName" >>= B.cast')
                                 <*> (d B.!? "email" >>= B.cast')
-                                <*> (d B.!? "created" >>= B.cast' >>= gregToDay)
+                                <*> (d B.!? "created" >>= B.cast')
   cast' _ = Nothing
 
 
@@ -743,11 +721,11 @@ instance B.Val Session where
   val s = B.Doc
           [ "id" B.:= B.val (sessionId s)
           , "user" B.:= B.val (sessionUser s)
-          , "created" B.:= B.val (dayToGreg (sessionCreated s)) ]
+          , "created" B.:= B.val (sessionCreated s) ]
   cast' (B.Doc d) = Session
                 <$> (d B.!? "id" >>= B.cast') 
                 <*> (d B.!? "user" >>= B.cast')
-                <*> (d B.!? "created" >>= B.cast' >>= gregToDay)
+                <*> (d B.!? "created" >>= B.cast')
 
 
 mapBy :: Ord k => (v -> k) -> [v] -> M.Map k v

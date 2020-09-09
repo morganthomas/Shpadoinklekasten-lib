@@ -10,7 +10,8 @@ import qualified Data.Map as M
 import           Prelude hiding (div)
 import           Data.Maybe (catMaybes)
 import           Data.Text
-import           Data.Time.Calendar
+import           Data.Time.Clock (UTCTime)
+import           Data.Time.Format (formatTime, defaultTimeLocale, iso8601DateFormat)
 
 import           Shpadoinkle
 import           Shpadoinkle.Html
@@ -77,5 +78,5 @@ commentView c = div [class' "s11k-comment mb-2"] [
       <> ", " <> dateView (commentCreated c)
     , button [ class' "form-control btn", onClickE (handleOpenEdit $ commentId c)  ] [ text "Edit Comment" ] ] ]
 
-dateView :: Day -> Text
-dateView = pack . (\(y, m, d) -> show y <> "-" <> show m <> "-" <> show d) . toGregorian
+dateView :: UTCTime -> Text
+dateView = pack . (formatTime defaultTimeLocale (iso8601DateFormat (Just "%H:%M:%S"))) 

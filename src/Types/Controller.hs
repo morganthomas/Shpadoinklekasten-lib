@@ -40,7 +40,8 @@ import           Data.Proxy
 import qualified Data.Set as S
 import           Data.Text (Text, intercalate, split, reverse)
 import           Data.Text.Encoding (decodeUtf8, encodeUtf8)
-import           Data.Time.Calendar
+import           Data.Time.Calendar (fromGregorian)
+import           Data.Time.Clock (UTCTime (..), secondsToDiffTime)
 import qualified Data.UUID as U
 import           Data.UUID.Next (nextUUID)
 import           GHC.Generics
@@ -237,7 +238,7 @@ invertChange _ (NewRelation r) = DeleteRelation r
 invertChange z (ComposedChanges cs) = ComposedChanges $ invertChange z <$> Prelude.reverse cs
 
 
-applyChange :: UserId -> Day -> Change -> Zettel -> Zettel
+applyChange :: UserId -> UTCTime -> Change -> Zettel -> Zettel
 
 applyChange _ _ (NewCategory i t) z = fromMaybe z $ do
   guard . isNothing $ M.lookup i (categories z)
@@ -479,14 +480,14 @@ newRelation r = saveChange (NewRelation r)
 deleteRelation :: ZettelEditor m => Relation -> SessionId -> m ()
 deleteRelation r = saveChange (DeleteRelation r)
 
-
-getToday :: MonadJSM m => m Day
+-- TODO: get actual DiffTime (currently always returns midnight)
+getToday :: MonadJSM m => m UTCTime
 getToday = do
   date  <- liftJSM $ eval ("new Date()" :: Text) >>= makeObject
   day   <- round <$> liftJSM (((date # ("getDate" :: Text) :: [JSVal] -> JSM JSVal) $ []) >>= valToNumber)
   month <- (1+) . round <$> liftJSM (((date # ("getMonth" :: Text) :: [JSVal] -> JSM JSVal) $ []) >>= valToNumber)
   year  <- (1900+) . round <$> liftJSM (((date # ("getYear" :: Text) :: [JSVal] -> JSM JSVal) $ []) >>= valToNumber)
-  return (fromGregorian year month day)
+  return (UTCTime (fromGregorian year month day) (secondsToDiffTime 0))
 
 
 splitOn :: Eq a => a -> [a] -> Maybe ([a], [a])
