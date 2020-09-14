@@ -40,8 +40,7 @@ import           Data.Proxy
 import qualified Data.Set as S
 import           Data.Text (Text, intercalate, split, reverse)
 import           Data.Text.Encoding (decodeUtf8, encodeUtf8)
-import           Data.Time.Calendar (fromGregorian)
-import           Data.Time.Clock (UTCTime (..), secondsToDiffTime)
+import           Data.Time.Clock (UTCTime (..), getCurrentTime, secondsToDiffTime)
 import qualified Data.UUID as U
 import           Data.UUID.Next (nextUUID)
 import           GHC.Generics
@@ -480,15 +479,8 @@ newRelation r = saveChange (NewRelation r)
 deleteRelation :: ZettelEditor m => Relation -> SessionId -> m ()
 deleteRelation r = saveChange (DeleteRelation r)
 
--- TODO: get actual DiffTime (currently always returns midnight)
 getToday :: MonadJSM m => m UTCTime
-getToday = do
-  date  <- liftJSM $ eval ("new Date()" :: Text) >>= makeObject
-  day   <- round <$> liftJSM (((date # ("getDate" :: Text) :: [JSVal] -> JSM JSVal) $ []) >>= valToNumber)
-  month <- (1+) . round <$> liftJSM (((date # ("getMonth" :: Text) :: [JSVal] -> JSM JSVal) $ []) >>= valToNumber)
-  year  <- (1900+) . round <$> liftJSM (((date # ("getYear" :: Text) :: [JSVal] -> JSM JSVal) $ []) >>= valToNumber)
-  return (UTCTime (fromGregorian year month day) (secondsToDiffTime 0))
-
+getToday = liftIO getCurrentTime
 
 splitOn :: Eq a => a -> [a] -> Maybe ([a], [a])
 splitOn x xs = do

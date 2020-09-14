@@ -11,7 +11,7 @@ import           Prelude hiding (div)
 import           Data.Maybe (catMaybes)
 import           Data.Text
 import           Data.Time.Clock (UTCTime)
-import           Data.Time.Format (formatTime, defaultTimeLocale, iso8601DateFormat)
+import           Data.Time.Format (formatTime, defaultTimeLocale)
 
 import           Shpadoinkle
 import           Shpadoinkle.Html
@@ -33,7 +33,7 @@ threadView model@(z, v) =
           <$> catMaybes (categoryIdTitle z <$> categorization t) ),
         h3 [class' "s11k-thread-title"] [ text (threadTitle t) ],
         div [class' "s11k-thread-author"] [ text (unUserId (threadAuthor t)) ],
-        div [class' "s11k-thread-created"] [ text (dateView (threadCreated t)) ],
+        div [class' "s11k-thread-created"] [ text ("thread created " <> dateView (threadCreated t)) ],
         --div [class' "s11k-links row"] (linkView <$> links t),
         addCommentWidget model,
         div [class' "s11k-comments"] (commentDispatch model <$> threadComments z t) ]
@@ -57,6 +57,12 @@ commentDispatch model@(z, t) c =
     (Just (i, t)) -> if (commentId c == i) then commentEditor model i t c else commentView c   
     Nothing       -> commentView c
 
+commentTimeInfo :: ZettelController m => Comment -> HtmlM m (Zettel, ThreadV)
+commentTimeInfo c = div [class' "s11k-comment-metadata"]
+                      [ strong [] . (:[]) . text $ "- " <> unUserId (commentAuthor c)
+                        <> ", comment created " <> dateView (commentCreated c)
+                        <> " (last edited " <> dateView (commentLastEdited c) <> ") " ]
+
 commentEditor :: ZettelController m => (Zettel, ThreadV) 
                                     -> CommentId
                                     -> Text
@@ -65,18 +71,14 @@ commentEditor :: ZettelController m => (Zettel, ThreadV)
 commentEditor model i t c = div [class' "s11k-add-comment form-group" ] [ 
     textarea' [ class' "form-control", ("rows", "4"), ("cols", "70"), onSubmitE handleSaveEdit
               , onInput (setEditCommentField model), ("value", textProp t) ],
-    div [class' "s11k-comment-metadata"]
-      [ strong [] . (:[]) . text $ "- " <> unUserId (commentAuthor c)
-        <> ", " <> dateView (commentCreated c) ],
+    commentTimeInfo c, 
     button [ class' "form-control btn", onClickE handleSaveEdit ] [ text "Save Comment" ] ]
 
 commentView :: ZettelController m => Comment -> HtmlM m (Zettel, ThreadV)
 commentView c = div [class' "s11k-comment mb-2"] [
-  div [class' "s11k-comment-text mb-1"] [ text (commentText c) ],
-  div [class' "s11k-comment-metadata"]
-    [ strong [] . (:[]) . text $ "- " <> unUserId (commentAuthor c)
-      <> ", " <> dateView (commentCreated c)
-    , button [ class' "form-control btn", onClickE (handleOpenEdit $ commentId c)  ] [ text "Edit Comment" ] ] ]
+  div [class' "s11k-comment-text mb-1"] [ text (commentText c) ]
+    , commentTimeInfo c
+    , button [ class' "form-control btn", onClickE (handleOpenEdit $ commentId c)  ] [ text "Edit Comment" ] ]
 
 dateView :: UTCTime -> Text
-dateView = pack . (formatTime defaultTimeLocale (iso8601DateFormat (Just "%H:%M:%S"))) 
+dateView = pack . (formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S") 

@@ -220,7 +220,8 @@ commentEdited c = case commentEdits c of
 
 
 commentLastEdited :: Comment -> UTCTime
-commentLastEdited c = fromMaybe (UTCTime (fromGregorian 0 0 0) (secondsToDiffTime 0)) $ editCreated . fst <$> uncons (commentEdits c)
+commentLastEdited c = fromMaybe (UTCTime (fromGregorian 0 0 0) (secondsToDiffTime 0)) $ 
+  editCreated . fst <$> uncons (sortBy (\e f -> compare (editCreated f) (editCreated e)) $ commentEdits c)
 
 
 hash :: Text -> JSM PasswordHash
