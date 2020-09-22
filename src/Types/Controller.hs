@@ -855,12 +855,12 @@ instance MonadUnliftIO App where
 
 #ifdef ghcjs_HOST_OS
 instance ZettelEditor App where
-  saveChange c s = runXHR App $ saveChangeM c s
-  getDatabase s = runXHR App $ getDatabaseM s
-  login u p = runXHR App $ loginM u p
+  saveChange c s = App . runXHR $ saveChangeM c s
+  getDatabase s = App . runXHR $ getDatabaseM s
+  login u p = App . runXHR $ loginM u p
 #else
 liftClientM :: ClientM a -> App a
-liftClientM m = runXHR' App m . mkClientEnv $ BaseUrl Http "localhost" 8080 ""
+liftClientM m = App . runXHR' m . ClientEnv $ BaseUrl Http "localhost" 8080 ""
 
 instance ZettelEditor App where
   saveChange c s = liftClientM $ saveChangeM c s

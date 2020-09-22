@@ -6,6 +6,7 @@
 module ClientMain ( main ) where
 
 
+import           Data.Proxy
 import           Data.Text
 import           Language.Javascript.JSaddle (liftJSM, eval)
 import           Shpadoinkle
@@ -32,4 +33,4 @@ initialState r = do
 
 main :: IO ()
 main = runJSorWarp 8082 $ do
-  fullPageSPA @SPA runApp runParDiff initialState view getBody (return . router) routes
+  fullPageSPA @SPA Proxy runApp runParDiff initialState view getBody (return . router) routes
